@@ -1053,6 +1053,14 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">PR #3</a> · <a href="https://github.com/kanlerxz87-cyber/Alert4/commit/f00b6f187e13278f1b8221bd74d6aea489e430de" target="_blank" rel="noopener">merge commit</a> · <a href="COORDINATION.md">COORDINATION.md</a></td>
           <td class="status-ok">Fixed — union integrated</td>
         </tr>
+        <tr>
+          <td>COPY-8</td>
+          <td class="wrap">Live snapshot difference: the reference feed (fetched 3:38:33 PM) showed 3 reviews / 76 tracked entries; this deployment (fetched 3:49:15 PM) showed 10 reviews / 78 tracked entries.</td>
+          <td class="wrap">The three reference rows are identical word-for-word in both feeds, including “not observed” Before scores. The extra BAL @ STL row was checked against the official play-by-play: <code>823015:34:p:MF</code>, <code>MF</code>, team 138, 7–1.</td>
+          <td class="wrap">No value was invented. The pages were fetched at different times and the feed labels its store “local log only”; the exact cause of the count difference cannot be independently verified, so it is flagged rather than explained away.</td>
+          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference feed</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26" target="_blank" rel="noopener">this feed</a> · <a href="https://statsapi.mlb.com/api/v1/game/823015/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,reviewType,challengeTeamId,matchup,batter,fullName,pitcher" target="_blank" rel="noopener">official play 823015:34</a></td>
+          <td class="status-unverified">Flagged — dynamic snapshot difference</td>
+        </tr>
       </tbody>
     </table>
     <p style="color:var(--muted);font-size:13px">

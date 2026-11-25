@@ -1,4 +1,25 @@
-# COORDINATION.md — shared task board
+# COORDINATION.md — Alert4 shared task board (copy of snapquast73-boop/LIVPBP)
+
+Read this file before starting work in this repository. Three copy sessions worked here; the merge that produced the current `main` unioned them.
+
+> ## INTEGRATION MERGE (2026-11-25) — union of parallel copy sessions (PRs #2 and #3)
+> Two Arena sessions independently copied `snapquast73-boop/LIVPBP` (`main` @ `5c02527d3c7a56ea66c698cfabff80a407b6dfd3`) into this repo on 2026-11-25 and both opened PRs to `main`:
+> - **`076871a5`** — PR [#3](https://github.com/kanlerxz87-cyber/Alert4/pull/3), **MERGED** 2026-11-25T20:48Z (merge commit `f00b6f1`). Its board is preserved verbatim below in "Parallel copy session — 076871a5".
+> - **`9572372b`** — this branch, PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2). Its board is in "Copy session — 9572372b" below.
+>
+> **Merge conflicts resolved without discarding either session's work** (`git merge origin/main` on `arena/9572372b-alert4`, conflicts in `COORDINATION.md`, `README.md`, `flagged.html`, `package.json`, `tests/README.md`, `tests/link-check.mjs`):
+> - `COORDINATION.md` — union of both boards (this file). Neither session's text was dropped; both are reproduced, and this merge note is the record of the resolution.
+> - `README.md` — **both** kept: the COPY NOTE documents the upstream commit and adaptation list; the live-demo block carries both this copy's Pages URL and the upstream reference URL.
+> - `flagged.html` — kept the `9572372b` version: it is the upstream file **plus** a clearly labeled §15 (copy-session record, items C-1…C-5). The `076871a5` side was byte-identical to upstream, so nothing was lost; §15 is extended to acknowledge this parallel session.
+> - `package.json` — both sides identical except the `description` em dash byte (`—` vs `\u2014`); kept the upstream bytes (`—`). `homepage` identical on both (`https://kanlerxz87-cyber.github.io/Alert4/`).
+> - `tests/link-check.mjs` — kept this branch's comment (`/Alert4/` is the correct Pages prefix here). The other side was upstream verbatim (`/LIVPBP/`).
+> - `tests/README.md` — kept this branch's rows linking test docs to `kanlerxz87-cyber/Alert4/blob/main/…` and the `/Alert4/` prefix note; the other side was upstream verbatim (`/LIVPBP/` + upstream blob links). Flagged here for the record; the rows differ only in link targets.
+> - `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`, `404.html`, `package.json` homepage, `.github/` — identical adaptations on both branches; auto-merged without conflict.
+> - **Verification after the merge:** full suite re-run on the merged tree (see the bottom of this note) — `node tools/restoration-check.mjs`, `npm test`, `node tests/run-all.mjs`, `node tests/props-provenance-test.mjs` all re-run and passing; `node tests/link-check.mjs` now counts 48 local refs (the merged README links were re-checked).
+> - **Process note:** the first `9572372b` push (`5e89946`) omitted `COORDINATION.md`, which `tools/restoration-check.mjs` and the "every local href/src resolves" smoke check both require — CI failed on that push and passed on the follow-up (`23bd956`). Logged here per the no-silent-failure rule; no other impact.
+> - **Live `statsapi.mlb.com` re-verification was not possible from either sandbox** (egress restricted); both copies carry the upstream verification record (`docs/verification-report.md`) verbatim and unverified items stay flagged on `flagged.html`.
+
+---
 
 > ## COPY SESSION (2026-11-25) — repo `kanlerxz87-cyber/Alert4`
 >
@@ -150,7 +171,7 @@ Resolution — **nothing was discarded**:
 
 ---
 
-# Preserved board — sessions `681bfa13` / `f8d351d0` (verbatim)
+## Preserved board — sessions `681bfa13` / `f8d351d0` (verbatim)
 
 Session ID for this session: `681bfa13` (Arena branch `arena/681bfa13-livpbp`).
 Arena fixes this session to that branch, so the per-session `session-<id>/<task>`
@@ -474,7 +495,7 @@ Merge-conflict note (2026-11-20): rebasing onto `main` @ `9297edc` (PR #12, sess
 
 ---
 
-# Session `arena/1f908513-livpbp` — Final Live-StatsAPI & Replay-Audit (`RR-01`–`RR-06`) Integration
+## Session `arena/1f908513-livpbp` — Final Live-StatsAPI & Replay-Audit (`RR-01`–`RR-06`) Integration
 
 - **Session ID:** `1f908513` (branch fixed by Arena to `arena/1f908513-livpbp`, branched from `aef1a74`).
 - **Pull Request:** [#21](https://github.com/snapquast73-boop/LIVPBP/pull/21) — **MERGED** at `2026-11-20T22:46:41Z` (merge commit [`f810cee4358a84ea44232bbc016d871fb3cdf037`](https://github.com/snapquast73-boop/LIVPBP/commit/f810cee4358a84ea44232bbc016d871fb3cdf037))
@@ -504,7 +525,7 @@ Merge-conflict note (2026-11-20): rebasing onto `main` @ `9297edc` (PR #12, sess
 
 ---
 
-# Session `d105b565` — functional re-verification & deep links (2026-11-22)
+## Session `d105b565` — functional re-verification & deep links (2026-11-22)
 
 - **Session ID:** `d105b565` · **Branch (fixed by Arena):** `arena/d105b565-livpbp`, branched from `main` @ `59a7351` (merge of PR #22). The brief's `session-<id>/<task>` branch rule cannot be followed literally in this sandbox; logged as `F-001` by every previous session and unchanged here.
 - **Board state when this session started:** no open claims. `git status` clean, `main` == `59a7351`, working tree matched `origin/main` exactly. The task board's last entry (`1f908513`) was already merged and deployed, so this session claims the tasks below before writing to any file.
@@ -577,7 +598,7 @@ node tools/restoration-check.mjs -> ALL CHECKS PASSED
 
 ---
 
-# Session `arena/aa6c1d7b-livpbp` — functional-parity pass vs the cited working sites (2026-11-22)
+## Session `arena/aa6c1d7b-livpbp` — functional-parity pass vs the cited working sites (2026-11-22)
 
 - **Session ID:** `aa6c1d7b` (Arena fixes this session to branch `arena/aa6c1d7b-livpbp`, branched from `main` @ `59a7351` (merge of PR #22). Arena forbids creating/pushing other branches, so the brief's `session-<id>/<task>` rule cannot be followed literally; same deviation as the previous sessions' F-001.)
 - **User's reference sites (reported working):** the Replay Feed on
@@ -633,7 +654,7 @@ same thing, and its PR #24 merged after PR #23. Nothing was lost and nothing was
 
 ---
 
-# Session `arena/ca40f7ec-livpbp` — Non-Overlapping Provenance, Props & Stylesheet Polish (`2026-11-22`)
+## Session `arena/ca40f7ec-livpbp` — Non-Overlapping Provenance, Props & Stylesheet Polish (`2026-11-22`)
 
 - **Session ID:** `ca40f7ec` · **Branch (fixed by Arena):** `arena/ca40f7ec-livpbp`, merged with `main` @ [`1e67246`](https://github.com/snapquast73-boop/LIVPBP/commit/1e67246).
 - **Coordination & non-overlapping scope check (`2026-11-22`):**
@@ -675,7 +696,7 @@ same thing, and its PR #24 merged after PR #23. Nothing was lost and nothing was
 
 ---
 
-# Session `arena/af75fbfd-livpbp` — Line-by-Line Functional & Provenance Parity Pass (`2026-11-22`)
+## Session `arena/af75fbfd-livpbp` — Line-by-Line Functional & Provenance Parity Pass (`2026-11-22`)
 
 - **Session ID:** `af75fbfd` (branch fixed by Arena to `arena/af75fbfd-livpbp`, branched from `main` @ [`59a7351`](https://github.com/snapquast73-boop/LIVPBP/commit/59a73511af5b90e41b678db3c5005502cee54dda), rebased onto [`1411fbc`](https://github.com/snapquast73-boop/LIVPBP/commit/1411fbc70905ad11263f0cadf8f99becd2d83cb7) preserving `d105b565` PR #23/#25/#26, `aa6c1d7b` PR #24/#27, and `ca40f7ec` PR #28/#29 verbatim).
 - **Stale-claim check (`2026-11-22T02:05Z`):** Inspected all remote branches and open PRs (`0` open PRs). Merged sessions `d105b565`, `aa6c1d7b`, and `ca40f7ec` preserved completely; all three `ca40f7ec` handoff items (`180d` winter offseason lookback, `isComplete`/`inProgress` lean review probe + `gamePk` passed into `Props.getForecast`, and `atBatIndex: 0` merge key) are incorporated in this branch.
@@ -722,7 +743,7 @@ same thing, and its PR #24 merged after PR #23. Nothing was lost and nothing was
 
 ---
 
-# Session `arena/6e2a58d9-livpbp` — reference-parity functional pass (2026-11-22)
+## Session `arena/6e2a58d9-livpbp` — reference-parity functional pass (2026-11-22)
 
 - **Session ID:** `6e2a58d9` (branch fixed by Arena to `arena/6e2a58d9-livpbp`, from `main` @ `59a7351`). F-001 applies: no `session-<id>/<task>` branches; all work on this branch, integration by PR to `main`.
 - **Brief:** make the site functionally work like the user-supplied references ([LIVPBP2/reviews.html](https://snapquast73-boop.github.io/LIVPBP2/reviews.html), [POSTSSNALRT/reviews.html](https://snapquast73-boop.github.io/POSTSSNALRT/reviews.html)), keeping everything else unchanged. Where the references disagree, the surviving original contract (uploaded `README.md` + `reviews.html` at `aef1a74c`) decides; irreconcilable items are flagged, never inferred.
@@ -763,3 +784,49 @@ same thing, and its PR #24 merged after PR #23. Nothing was lost and nothing was
 - **Live verification (2026-11-22, after the build):**
   - [`/reviews.html?date=2026-08-28`](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-28) → README-format prefixed counter lines on every challenge row (`BAL: 0 manager challenges left now (1 used)`, `TOR: 1 manager challenge left now (1 used)`, …), both-teams summaries (`Challenges left: PIT 1 MGR · 2 ABS — STL 1 MGR · 2 ABS` / `SD 1 MGR · 1 ABS — TB 1 MGR · 1 ABS`), honest `— (not observed before ruling)` markings (no inferred Before scores), and **entry-scoped irregularity notes** (`Before-review score was not observed for 824960:47:p:MF …` on its own row only) — the pre-fix misattribution (same first note repeated on every row) is gone.
   - [`/flagged.html`](https://snapquast73-boop.github.io/LIVPBP/flagged.html) → sections 1–**14** live: §13 (`af75fbfd` AF-1…AF-7) + §14 (`6e2a58d9` R2-1…R2-11), every row carrying its official/first-party source link and unverifiable wording marked unverified.
+
+---
+
+## Parallel copy session — `076871a5` (PR [#3](https://github.com/kanlerxz87-cyber/Alert4/pull/3), MERGED 2026-11-25, merge commit `f00b6f1`)
+
+Preserved verbatim from `origin/main` @ `f00b6f1` before the merge. Note: that session recorded "PR / merge / Pages: to be recorded after PR creation, merge, and Pages deploy verification." — the PR merged; its Pages verification line was never filled in by its author, so the deployment record for that session is incomplete (see the top-level merge note and flagged.html §15).
+
+Shared task board for parallel agent sessions. Read before starting work. Claim tasks by writing your session ID and file scope, then commit and push the claim immediately.
+
+## Status values
+- `unclaimed`
+- `in_progress`
+- `done`
+- `needs_review` (published on Flagged for Review page; does not block merge)
+
+## Tasks
+
+| Task | Status | Session | Scope (files/dirs) | Notes |
+|------|--------|---------|--------------------|-------|
+| Copy LIVPBP reference repo into Alert4 and verify site builds/runs | done | 076871a5 | `/` (full repo copy, excluding .git) | Copied from https://github.com/snapquast73-boop/LIVPBP `main@5c02527d3c7a56ea66c698cfabff80a407b6dfd3`. |
+
+## Log
+
+### 2026-11-25T20:40Z — session 076871a5
+- Claimed: "Copy LIVPBP reference repo into Alert4 and verify site builds/runs".
+- Scope: full repository contents (copy from reference repo).
+- Plan: clone reference repo, copy files into Alert4, verify structure/tests/build, create PR, merge, confirm Pages deploy.
+
+### 2026-11-25 — session 076871a5 (completion)
+- **Source copied:** https://github.com/snapquast73-boop/LIVPBP (default branch `main`, commit `5c02527d3c7a56ea66c698cfabff80a407b6dfd3`).
+- **Reference live site:** https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26
+- **Actions:**
+  - Cloned reference repo (depth 1) and copied all files into Alert4 (excluding `.git`); preserved our repo-local COORDINATION.md.
+  - Repo-local adaptations required for Alert4 deployment (recorded, no data fabrication):
+    - `404.html`: base-href detection changed from `/LIVPBP/` to `/Alert4/` so GitHub Pages subpath works in this repo.
+    - `package.json`: `homepage` updated to `https://kanlerxz87-cyber.github.io/Alert4/`.
+    - `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`: test URL base updated to Alert4 Pages URL (test logic unchanged).
+    - `README.md`: added copy note and this-copy/upstream live demo links; historical audit/verification docs retain upstream provenance links.
+- **Verification performed:**
+  - `node tools/restoration-check.mjs` — ALL CHECKS PASSED (file refs, JS parse, server endpoints/static serving, .git/HEAD blocked, atBatIndex 0 merge preserved).
+  - `node tools/smoke-test.mjs` (`npm test`) — **64 passed, 0 failed** (fixtures from official StatsAPI responses per repo tests; includes feed-log merge semantics, static asset integrity, deep-link/date handling, ABS/review parity checks).
+  - `node tests/run-all.mjs` — PASS syntax, PASS link-check (41 local refs), PASS contract-check (8 bindings), PASS jsdom-render-test (47 checks).
+  - Local server smoke: `node server.mjs` on port 8000 returned 200 for `/`, `/index.html`, `/reviews.html`, `/game.html`, `/flagged.html`, `/assets/js/reviews-feed.js`; `reviews.html` contained expected UI IDs (`date-picker`, `feed-list`, `feed-tabs`, `active-strip`, etc.).
+- **Official sources used by the app (as copied from upstream):** MLB StatsAPI endpoints under `https://statsapi.mlb.com/api/` (see `docs/statsapi-field-map.md`, `docs/verification-report.md`, and `flagged.html` in repo for upstream-verified mappings/provenance). No MLB data values were invented in this session.
+- **Irregularities / flags:** None introduced by this copy. Existing upstream flagged/unverified items remain published on `flagged.html` per upstream audit; they do not block merge.
+- **PR / merge / Pages:** to be recorded after PR creation, merge, and Pages deploy verification.

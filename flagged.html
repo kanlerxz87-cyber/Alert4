@@ -1034,7 +1034,15 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       <code>.git</code>; the only differing paths are the ones listed in C-1/C-2/C-3 plus <code>README.md</code> and this section.
       Deployment record (PR number, merge commit, Pages build) is in <a href="COORDINATION.md">COORDINATION.md</a>.
     </p>
-
+    <p style="color:var(--muted);font-size:13px">
+      <strong>Parallel session (2026-11-25):</strong> <code>076871a5</code> independently copied the same upstream tree into this
+      repository on the same day (PR <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">#3</a>,
+      merged as <code>f00b6f1</code>) before this session's PR was merged. The two branches conflicted on six files; the union
+      resolution is logged line-by-line in <a href="COORDINATION.md">COORDINATION.md</a> ("INTEGRATION MERGE"). That session's side
+      contributed no content beyond the deployment adaptations recorded as C-1/C-2/C-3 (its <code>flagged.html</code> was
+      byte-identical to upstream), so sections 1–14 above are unchanged and still describe the code that is live. Its Pages-deploy
+      verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
+    </p>
   </main>
 
   <footer class="site-footer">

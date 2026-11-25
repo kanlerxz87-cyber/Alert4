@@ -5,12 +5,13 @@
 > [`snapquast73-boop/LIVPBP`](https://github.com/snapquast73-boop/LIVPBP), made so the site can be
 > iterated on independently. The copy itself is byte-for-byte identical to upstream commit
 > `5c02527d3c7a56ea66c698cfabff80a407b6dfd3` (`main`) except for the deployment URLs in
-> `package.json`, `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`, `tests/README.md`
-> and this note. Historical references to `snapquast73-boop/LIVPBP` in `COORDINATION.md`, `docs/`,
-> `audit/` and `flagged.html` are kept verbatim — they are the upstream restoration record and link
-> to the upstream sources that were used. The upstream verification report and flagged-items page
-> remain the source of truth for the field-by-field checks; see the Copy Session section at the top of
-> [`COORDINATION.md`](COORDINATION.md) for what this session re-verified and what it could not.
+> `package.json`, `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`, `tests/README.md`,
+> `tests/link-check.mjs`, this note and the merged 404 fix. Historical references to
+> `snapquast73-boop/LIVPBP` in `COORDINATION.md`, `docs/`, `audit/` and `flagged.html` are kept
+> verbatim — they are the upstream restoration record and link to the upstream sources that were
+> used. The upstream verification report and flagged-items page remain the source of truth for the
+> field-by-field checks; see the Copy Session sections at the top of
+> [`COORDINATION.md`](COORDINATION.md) for what the copy sessions re-verified and what they could not.
 >
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️
 > This repository was uploaded incomplete: the three HTML pages referenced a stylesheet and nine
@@ -176,7 +177,8 @@ mlb.com uses, re-implemented from scratch in vanilla HTML/CSS/JS.
 - No build step, no frameworks, no API keys — it runs on **GitHub Pages** (or any static
   host, or even `file://`).
 
-> **Live demo:** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)
+> **Live demo (this copy):** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)  
+> **Upstream reference:** [snapquast73-boop.github.io/LIVPBP](https://snapquast73-boop.github.io/LIVPBP/)
 > (Restored 2026-11-20: the original author's repo linked here previously is
 > no longer on GitHub — see `flagged.html` items F-002/F-008 and
 > `COORDINATION.md` for the restoration log and flagged irregularities.)

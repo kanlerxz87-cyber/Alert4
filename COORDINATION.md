@@ -38,4 +38,6 @@ Shared task board for parallel agent sessions. Read before starting work. Claim 
   - Local server smoke: `node server.mjs` on port 8000 returned 200 for `/`, `/index.html`, `/reviews.html`, `/game.html`, `/flagged.html`, `/assets/js/reviews-feed.js`; `reviews.html` contained expected UI IDs (`date-picker`, `feed-list`, `feed-tabs`, `active-strip`, etc.).
 - **Official sources used by the app (as copied from upstream):** MLB StatsAPI endpoints under `https://statsapi.mlb.com/api/` (see `docs/statsapi-field-map.md`, `docs/verification-report.md`, and `flagged.html` in repo for upstream-verified mappings/provenance). No MLB data values were invented in this session.
 - **Irregularities / flags:** None introduced by this copy. Existing upstream flagged/unverified items remain published on `flagged.html` per upstream audit; they do not block merge.
-- **PR / merge / Pages:** to be recorded after PR creation, merge, and Pages deploy verification.
+- **PR:** https://github.com/kanlerxz87-cyber/Alert4/pull/3 (merged)
+- **Merge:** `gh pr merge 3 --merge` completed successfully into `main`.
+- **Pages:** GitHub Pages configured (legacy, `main` `/`, public, HTTPS enforced). `pages build and deployment` run 45698449293 completed `success`. Live verification: https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26 returns the replay feed with MLB StatsAPI-linked entries.

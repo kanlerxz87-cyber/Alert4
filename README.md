@@ -9,28 +9,35 @@
 
 
 > ### 📋 **COPY NOTE (2026-11-25)** 📋
-> This repository is a byte-for-byte copy of the working reference site
+> This repository is a copy of the working reference site
 > [`snapquast73-boop/LIVPBP` @ `5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3),
 > the revision published on [GitHub Pages](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26)
 > at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
-> All 40 tracked upstream files were initially verified by SHA-256 with zero mismatches; no
-> site data or verification value was edited. Three parallel sessions imported the same commit
-> on 2026-11-25 and their work was merged without discarding any of it (see
+> All 40 tracked upstream files were verified byte-for-byte (SHA-256, zero mismatches) by session
+> `fd8d4cdb`; session `9572372b` independently confirmed byte-identity with `diff -r` apart from the
+> listed adaptations. Five parallel copies of the same commit landed in this repository on
+> 2026-11-25 and their work was merged without discarding any of it (see
 > [`COORDINATION.md`](COORDINATION.md)): session `076871a5` retargeted `404.html`'s base path,
-> `package.json`'s homepage and the two test-harness URLs to `/Alert4/`; session `fd8d4cdb`
-> added a Pages-delivery CI guard; session `arena-f17e9b8e` re-verified every API contract
-> against the official MLB StatsAPI (18 linked rows, including all three reference review rows
-> and the upcoming 2027 game days) and archived the upstream board at
-> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
-> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)).
+> `package.json`'s homepage and the two test-harness URLs to `/Alert4/`; session `fd8d4cdb` added a
+> Pages-delivery CI guard and the copy verification report; session `arena-f17e9b8e` re-verified
+> every API contract against the official MLB StatsAPI (A4-1…A4-10) and archived the upstream board
+> at [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)); session `arena/d8da4b48`
+> added an Alert4 identity header, renamed `package.json` to `alert4-mlb-live-pbp`, and re-pointed
+> deployed-site links in the audit/docs files at the Alert4 Pages URL; session `9572372b` unioned
+> the copies and added the deployment-URL records, documentation union and link fixes described in
+> `COORDINATION.md`.
 > Copy checks, the official MLB StatsAPI spot-checks and every source link are in
 > [`docs/copy-verification.md`](docs/copy-verification.md) and
 > [`docs/verification-report-alert4.md`](docs/verification-report-alert4.md).
 > Copy-specific deviations are published on the
-> [**⚑ Flagged for Review**](flagged.html#15-copy-into-alert4-session-arena-fd8d4cdb-alert4-2026-11-25)
-> page (sections 15–16); the upstream site's own flags remain in sections 1–14. External links to
-> the upstream repository are provenance links for manual review, not internal navigation.
-
+> [**⚑ Flagged for Review**](flagged.html)
+> page (sections 15–17); the upstream site's own flags remain in sections 1–14. External links to
+> the upstream repository are provenance links for manual review, not internal navigation. The
+> upstream coordination board is preserved verbatim at
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md); what the copy sessions checked
+> and could not verify live is in [`COORDINATION.md`](COORDINATION.md).
+>
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️
 > This repository was uploaded incomplete: the three HTML pages referenced a stylesheet and nine
 > scripts under `assets/` that were **not** part of the upload, so GitHub Pages served an unstyled,

@@ -26,13 +26,15 @@
         <strong>This site is the Alert4 copy.</strong> <code>kanlerxz87-cyber/Alert4</code> is a
         byte-for-byte copy of <a href="https://github.com/snapquast73-boop/LIVPBP" target="_blank" rel="noopener">snapquast73-boop/LIVPBP</a>
         at commit <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">5c02527</a>
-        (the exact commit the reference site is built from), made 2026-11-25 by three parallel
+        (the exact commit the reference site is built from), made 2026-11-25 by five parallel
         sessions whose work was merged without discarding any of it. Sections 1–14 are the source
         repo's verification records, preserved verbatim; <a href="#section-15">section 15</a> is
-        session <code>fd8d4cdb</code>'s copy checklist (COPY-1…COPY-7);
+        session <code>fd8d4cdb</code>'s copy checklist (COPY-1…COPY-8);
         <a href="#section-16">section 16</a> is session <code>arena-f17e9b8e</code>'s independent
         re-verification of every API contract against the official MLB StatsAPI (A4-1…A4-10),
-        with the full report in <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>.
+        with the full report in <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>;
+        <a href="#section-17">section 17</a> is session <code>9572372b</code>'s integration &amp;
+        provenance record (C-1…C-5).
       </p>
       <p>
         This page lists every claim made about this rebuild together with the
@@ -1063,6 +1065,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
         </tr>
       </tbody>
     </table>
+
     <p style="color:var(--muted);font-size:13px">
       Copy-time checks: 40/40 files byte-identical · <code>npm test</code> 64 passed ·
       <code>node tests/run-all.mjs</code> 47/47 render checks ·
@@ -1071,7 +1074,6 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       Reference rows S1–S3 and the 2027-04-06 schedule (S4) were re-checked against the official
       MLB StatsAPI; links are in <a href="docs/copy-verification.md">docs/copy-verification.md</a>.
     </p>
-
     <h2 id="section-16">16. Alert4 copy — independent re-verification &amp; carried flags (session <code>arena-f17e9b8e</code>, 2026-11-25)</h2>
     <p style="color:var(--muted);font-size:13px">
       A third parallel session independently imported the same source commit and re-read every
@@ -1163,6 +1165,83 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       finding in the inherited sections applies to this copy unchanged.
     </p>
 
+
+    <h2 id="section-17">17. Copy session — Alert4 (session <code>9572372b</code>, 2026-11-25)</h2>
+    <p>
+      This repository (<code>kanlerxz87-cyber/Alert4</code>) is a copy of
+      <a href="https://github.com/snapquast73-boop/LIVPBP" target="_blank" rel="noopener">snapquast73-boop/LIVPBP</a>
+      at its <code>main</code> HEAD <code>5c02527d3c7a56ea66c698cfabff80a407b6dfd3</code> (the exact tree the
+      <a href="https://snapquast73-boop.github.io/LIVPBP/" target="_blank" rel="noopener">upstream live site</a>
+      was serving), published at
+      <a href="https://kanlerxz87-cyber.github.io/Alert4/" target="_blank" rel="noopener">kanlerxz87-cyber.github.io/Alert4</a>.
+      The copy is byte-for-byte identical except the deployment URLs listed below. All F-, U-, I-, D-, R2-, AF-
+      items in sections 1–14 keep their status unchanged; none of their underlying values were
+      re-verified against the live API in this session (see C-4). Nothing on this page was inferred or filled in.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Item</th><th>What the sources say</th><th>What the site does</th><th>Source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>C-1</td>
+          <td class="wrap"><code>404.html</code> hardcoded the Pages base path <code>/LIVPBP/</code> in its <code>document.write</code> base-href script.</td>
+          <td class="wrap">Under the new <code>/Alert4/</code> Pages prefix the check would always fail and the base would fall back to <code>/</code>, breaking the stylesheet on 404s served at depth.</td>
+          <td class="wrap">Fixed: the check now tests for <code>/Alert4/</code>. File structure otherwise unchanged.</td>
+          <td class="wrap"><code>404.html</code> in this repo · base commit <code>a24f7e159e2c965f1b8ab4aa75dfffe0bf53568b</code></td>
+          <td class="status-ok">Fixed</td>
+        </tr>
+        <tr>
+          <td>C-2</td>
+          <td class="wrap">Deployment URLs pointed at the upstream repo: <code>package.json</code> <code>homepage</code>, <code>tests/jsdom-render-test.mjs</code> jsdom page URL, <code>tests/props-provenance-test.mjs</code> page URL, <code>tests/README.md</code> blob links, <code>tests/link-check.mjs</code> comment.</td>
+          <td class="wrap">A copy that keeps upstream URLs would test and advertise the upstream deployment, not this one.</td>
+          <td class="wrap">Fixed: all now reference <code>kanlerxz87-cyber/Alert4</code> / <code>kanlerxz87-cyber.github.io/Alert4/</code>. Upstream historical URLs in <code>COORDINATION.md</code>, <code>docs/</code>, <code>audit/</code> and this page were kept verbatim — they are the upstream audit trail, not deployment config.</td>
+          <td class="wrap"><code>git diff a24f7e1..HEAD</code> on branch <code>arena/9572372b-alert4</code></td>
+          <td class="status-ok">Fixed</td>
+        </tr>
+        <tr>
+          <td>C-3</td>
+          <td class="wrap"><code>README.md</code> “Live demo” link pointed at <code>snapquast73-boop.github.io/LIVPBP/</code>.</td>
+          <td class="wrap">The copy’s own Pages URL is <code>https://kanlerxz87-cyber.github.io/Alert4/</code>.</td>
+          <td class="wrap">Fixed: link updated; a COPY NOTE was added above the restoration note documenting the copy, the upstream commit, and what this session did and could not verify.</td>
+          <td class="wrap"><code>README.md</code> this repo</td>
+          <td class="status-ok">Fixed</td>
+        </tr>
+        <tr>
+          <td>C-4</td>
+          <td class="wrap">Line-by-line re-verification of every table row against the live MLB StatsAPI could <strong>not</strong> be performed from the copy sandbox: outbound egress is restricted to <code>github.com</code>, <code>codeload.github.com</code>, <code>api.github.com</code>, <code>registry.npmjs.org</code>, <code>pypi.org</code> and <code>files.pythonhosted.org</code>. <code>statsapi.mlb.com</code>, <code>www.mlbstatic.com</code> and <code>img.mlbstatic.com</code> are unreachable, and so are the upstream GitHub Pages sites.</td>
+          <td class="wrap">Every official-source link printed in <a href="docs/verification-report.md">docs/verification-report.md</a>, <a href="docs/statsapi-field-map.md">docs/statsapi-field-map.md</a> and sections 1–14 above remains the upstream record of official sources, preserved verbatim for manual review.</td>
+          <td class="wrap">The offline fixture suite was re-run against the copied fixtures and this page’s links were checked locally: <code>node tools/restoration-check.mjs</code> ALL CHECKS PASSED · <code>npm test</code> 64 passed, 0 failed · <code>node tests/run-all.mjs</code> syntax OK, 41 local refs OK, 8 bindings OK, 47/47 jsdom · <code>node tests/props-provenance-test.mjs</code> 5 passed.</td>
+          <td class="wrap">fixtures: <a href="tests/fixtures/schedule-2026-08-28.json">tests/fixtures/schedule-2026-08-28.json</a> · <a href="tests/fixtures/gamestatus.json">tests/fixtures/gamestatus.json</a> · <a href="tests/fixtures/feed-824638-review.json">tests/fixtures/feed-824638-review.json</a> (header comments record the official StatsAPI capture URLs)</td>
+          <td class="status-flag">Flagged — live re-verification not possible here; upstream record carried forward</td>
+        </tr>
+        <tr>
+          <td>C-5</td>
+          <td class="wrap">All upstream irregularities and unverified items (F-002…F-009, U-1…U-11, I-8, L-1…L-4, RR-01…RR-06, D-1…D-4, AF-1…AF-7, R2-1…R2-11) keep their published status.</td>
+          <td class="wrap">They were already triaged against official or first-party sources by the upstream sessions and are listed, with links, in sections 1–14 of this page and in <a href="COORDINATION.md">COORDINATION.md</a>.</td>
+          <td class="wrap">Carried over unchanged. The copy does not claim any of them is resolved; each still needs the owner’s decision or the upstream source it cites.</td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">upstream 5c02527</a> · this page, sections 1–14</td>
+          <td class="status-flag">Unverified / needs review — unchanged from upstream</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      Byte-identity of the copy was proven with <code>diff -r</code> against upstream <code>5c02527</code> excluding
+      <code>.git</code>; the only differing paths are the ones listed in C-1/C-2/C-3 plus <code>README.md</code> and this section.
+      Deployment record (PR number, merge commit, Pages build) is in <a href="COORDINATION.md">COORDINATION.md</a>.
+    </p>
+    <p style="color:var(--muted);font-size:13px">
+      <strong>Parallel sessions (2026-11-25):</strong> <code>076871a5</code>, <code>fd8d4cdb</code>, <code>arena-f17e9b8e</code> and <code>arena/d8da4b48</code> independently copied the same
+      upstream tree into this repository on the same day (PRs
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">#3</a> merged as <code>f00b6f1</code>,
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/1" target="_blank" rel="noopener">#1</a> merged as <code>102f9c4</code>,
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/4" target="_blank" rel="noopener">#4</a> merged as <code>65387ae</code> and
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/5" target="_blank" rel="noopener">#5</a> merged as <code>124bfea</code>) while
+      this session's PR was in flight. All four branches were merged with this one in sequence; every union is logged in <a href="COORDINATION.md">COORDINATION.md</a>.
+      None of the parallel sessions' site content differed from upstream beyond the deployment adaptations recorded as C-1/C-2/C-3,
+      <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
+      <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
+    </p>
   </main>
 
   <footer class="site-footer">

@@ -1,3 +1,100 @@
+# COORDINATION.md — Alert4 shared task board (copy of snapquast73-boop/LIVPBP)
+
+Read this file before starting work in this repository. The board for the initial
+site copy is in the sessions below; the upstream project's board (history, not
+active for this repo) is preserved byte-for-byte at
+[docs/upstream-coordination.md](docs/upstream-coordination.md).
+
+> ## INTEGRATION MERGES (2026-11-25) — five parallel copy sessions, one site
+>
+> On 2026-11-25 five Arena sessions independently copied `snapquast73-boop/LIVPBP` (`main` @ `5c02527d3c7a56ea66c698cfabff80a407b6dfd3`) into this repo and opened PRs to `main`:
+>
+> | Session | PR | Status | Unique contribution |
+> |---|---|---|---|
+> | `076871a5` | [#3](https://github.com/kanlerxz87-cyber/Alert4/pull/3) | **MERGED** 2026-11-25T20:48Z (merge commit `f00b6f1`) | First copy on `main`; repo-local adaptations (`/Alert4/` base path in `404.html`, `package.json` homepage, two test-harness URLs). |
+> | `fd8d4cdb` | [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) | **MERGED** 2026-11-25T~21:05Z (merge commit `102f9c4`) | Copy + `docs/copy-verification.md` (SHA-256 byte-identity of all 40 files, official-source spot-checks S1–S4 incl. live StatsAPI fetches), `flagged.html` §15 (COPY-1…COPY-8), Pages-delivery CI guard (skip only a published revision without `index.html`), upstream board moved to `docs/upstream-coordination.md`. |
+> | `arena-f17e9b8e` | [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) | **MERGED** 2026-11-25 (merge commit `65387ae`) | Independent re-verification of every API contract against the official MLB StatsAPI (A4-1…A4-10, `docs/verification-report-alert4.md` and `flagged.html` §16), upstream board archived at `audit/source-repo-COORDINATION.md`, 2027 schedule verification. |
+> | `arena/d8da4b48` | [#5](https://github.com/kanlerxz87-cyber/Alert4/pull/5) | **MERGED** 2026-11-25 (merge commit `124bfea`) | Alert4 identity header in `README.md`, `package.json` renamed to `alert4-mlb-live-pbp` with Alert4 description, deployed-site links in `audit/` and `docs/verification-report.md` re-pointed to the Alert4 Pages URL. |
+> | `9572372b` | [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) | **OPEN** (this branch) — pending merge; the final union record is appended after it lands | `flagged.html` §17 (C-1…C-5), union of all copy sessions in this file, Alert4-local link fixes in `tests/README.md` and `tests/link-check.mjs`, `README.md` COPY NOTE. |
+>
+> **Merge 1 — `9572372b` merges `origin/main` (PR #3, `f00b6f1`) into `arena/9572372b-alert4`** (conflicts: `COORDINATION.md`, `README.md`, `flagged.html`, `package.json`, `tests/README.md`, `tests/link-check.mjs`): unioned both boards in `COORDINATION.md`; kept both the COPY NOTE and the this-copy/upstream live-demo block in `README.md`; kept this branch's `flagged.html` (upstream + its §15 at the time); kept upstream bytes for `package.json`'s em-dash description; kept this branch's `/Alert4/` `tests/link-check.mjs` comment and Alert4 blob URLs in `tests/README.md`. Nothing was discarded.
+>
+> **Merge 2 — `9572372b` merges `origin/main` (PR #1, `102f9c4`) into `arena/9572372b-alert4`** (conflicts: `COORDINATION.md`, `README.md`, `flagged.html`):
+> - `README.md` — single unified COPY NOTE crediting all three sessions' adaptations; this-copy and upstream live-demo links kept; removed a non-existent fragment anchor (`flagged.html#…` — the page uses no `id`s).
+> - `flagged.html` — **both** copy sections kept: `fd8d4cdb`'s §15 verbatim, `9572372b`'s renumbered to **§17** (after `arena-f17e9b8e` claimed §16 in merge 4) and its parallel-sessions paragraph updated to name all parallel sessions with their PR/merge links. Upstream §§1–14 untouched.
+> - `COORDINATION.md` — union of all three boards: this session's board below, `fd8d4cdb`'s board (which itself embeds `076871a5`'s board) preserved verbatim further down, and the upstream board replaced by a byte-identical `docs/upstream-coordination.md` pointer. `tests/README.md`, `tests/link-check.mjs` and `package.json` auto-resolved to this branch's versions (their sides made no competing change) — no content was lost either way.
+> - Verified after both merges on the merged tree: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed, 0 failed** · `node tests/run-all.mjs` (syntax, link-check **52 refs** as measured on that tree, contract-check **8 bindings**, jsdom render **47/47**) **PASS** · `node tests/props-provenance-test.mjs` **5 passed**.
+> - **Live `statsapi.mlb.com` re-verification was not possible from the `9572372b` sandbox** (egress restricted to `github.com`, `codeload.github.com`, `api.github.com`, `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`). `fd8d4cdb`'s spot-checks S1–S4 (2026-11-25) are recorded in [docs/copy-verification.md](docs/copy-verification.md) and cited by this board, not claimed as this session's own checks.
+> - **Process notes (honest log):** (1) the first `9572372b` push (`5e89946`) omitted `COORDINATION.md`, which `tools/restoration-check.mjs` and the smoke test require — CI failed on it and passed on the follow-up commit `23bd956`; fixed by adding the file, no other impact. (2) During merge 2, `git pull --rebase` was attempted after merge 1 and incorrectly started replaying `main`'s commits onto this branch; it was **aborted** (`git rebase --abort`) with the branch untouched (`edd5d2d`), then the correct `git push` was run. No history was rewritten and nothing was lost.
+> - `fd8d4cdb` recorded its own `git pull --rebase` attempts and branch-pinning deviation in its board below; `076871a5` left its own Pages-deploy verification line as "to be recorded" — flagged here for the owner.
+>
+> **Merge 4 — `9572372b` merges `origin/main` (PR #4, `65387ae` — `arena-f17e9b8e`'s verification/union) into `arena/9572372b-alert4`** (conflicts: `README.md`, `flagged.html`): unified the COPY NOTE crediting all four merged sessions (`076871a5`, `fd8d4cdb`, `arena-f17e9b8e`, this session); in `flagged.html`, kept **both** session sections — `arena-f17e9b8e`'s §16 verbatim, this session's renumbered to **§17** with `id="section-17"`; sections reordered to 15 → 16 → 17 and the intro updated to list all four sessions and the open fourth PR ([#5](https://github.com/kanlerxz87-cyber/Alert4/pull/5), branch `arena/d8da4b48-alert4`, left open, not merged, not discarded). Verified on the merged tree before committing: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed** · `node tests/run-all.mjs` **PASS** · `node tests/props-provenance-test.mjs` **5 passed** · `flagged.html` parses clean (no stray/unclosed tags).
+>
+> **Merge 5 — `9572372b` merges `origin/main` (PR #5, `124bfea` — `arena/d8da4b48`'s identity/link adaptations) into `arena/9572372b-alert4`** (conflicts: `COORDINATION.md`, `tests/README.md`; `README.md`, `flagged.html`, `tests/README.md` auto-merged): kept this branch's Alert4-internal blob URLs in `tests/README.md` (provenance for this repo); unioned `COORDINATION.md` at the append point (kept this branch's PR-#4 integration-result paragraph and added `d8da4b48`'s addendum verbatim); README gained the five-session COPY NOTE and `flagged.html`'s intro and parallel-sessions record now name all five merged sessions and no open fourth PR (both #4 and #5 merged). `d8da4b48` renamed `package.json` to `alert4-mlb-live-pbp` — that adaptation kept as-is; `docs/verification-report.md` and `audit/*` deployed-URL links were re-pointed to the Alert4 Pages URL by that session and are unchanged here. Verified on the merged tree before committing: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed, 0 failed** · `node tests/run-all.mjs` PASS (syntax, link-check **57 local references OK**, contract-check 8 bindings, jsdom render 47/47) · `node tests/props-provenance-test.mjs` **5 passed** · `flagged.html` structural tags balanced.
+>
+> **Merge 6 — `9572372b` merges `origin/main` (PR #7, `96ceab8` — `arena-f17e9b8e`'s post-deploy record) into `arena/9572372b-alert4`** (conflict: `COORDINATION.md` only; `flagged.html` auto-merged taking their **A4-11** row — PR #5's retargeted historical evidence links flagged with counter-evidence, not reverted, per the parallel-session protocol; `docs/verification-report-alert4.md` §5 post-deploy verification merged cleanly): at the file-end conflict, kept their detailed integration log (PR #4 merge time, Pages build + delivery CI links, live-page verification, A4-11 restore request) verbatim and added a one-line cross-reference to this branch's earlier 65387ae merge. This branch's earlier short cross-reference paragraph was superseded by their full record. Verified on the merged tree before committing: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed, 0 failed** · `node tests/link-check.mjs` **57 local references OK** · `flagged.html` structural tags balanced.
+>
+> **Merge 3 — `9572372b` merges `origin/main` (PR #6, `2a4d504` — `fd8d4cdb`'s post-merge record) into `arena/9572372b-alert4`**: merged cleanly with the `ort` strategy, zero conflicts, nothing lost. This brought in **`fd8d4cdb`'s Final integration record** (appended verbatim at the end of this file): PR #1 merged 2026-11-25T20:52:16Z as `102f9c4`, Pages `built` for that commit, the post-merge delivery run succeeded byte-for-byte, and the live site was verified (reference feed rows, game view, 2027-04-06 schedule, flagged page §1–15) — plus **COPY-8** (a transient snapshot-count difference on the live feed, re-checked against the official play-by-play, flagged unverified) and **`docs/copy-verification.md` §5**. `flagged.html` §15 gained their COPY-8 row; this branch's section was unchanged at that point (later renumbered §16 → §17 in merge 4).
+
+### Copy session — `9572372b` (branch `arena/9572372b-alert4`, PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2))
+
+> ## COPY SESSION (2026-11-25) — repo `kanlerxz87-cyber/Alert4`
+>
+> **Session ID:** `9572372b` (branch fixed by Arena to `arena/9572372b-alert4`, from `main` @ `a24f7e1`).
+> F-001 applies: no `session-<id>/<task>` branches; all work on this branch, integration by PR to `main`.
+>
+> **Brief:** copy `snapquast73-boop/LIVPBP` (the site at https://snapquast73-boop.github.io/LIVPBP/ — the
+> reference "best working site") into this repo so it runs the same for upcoming game days, verify what can be
+> verified here, publish to GitHub Pages, and merge to `main`.
+>
+> **Source of the copy:** `snapquast73-boop/LIVPBP` `main` @ `5c02527d3c7a56ea66c698cfabff80a407b6dfd3`
+> (current upstream HEAD at copy time; the tree is what `https://snapquast73-boop.github.io/LIVPBP/` serves).
+> Copied with `tar --exclude=.git`; byte-identity vs upstream proven with `diff -r` after the copy — the only
+> paths that differ are the deployment-URL/404 adaptations listed below.
+>
+> ### Task board (`9572372b`)
+>
+> | Task | Status | Session | File scope | Notes |
+> |---|---|---|---|---|
+> | COPY-1 Copy upstream tree into this repo | done | `9572372b` | all files copied verbatim | Upstream HEAD `5c02527`; `.git` excluded |
+> | COPY-2 Adapt deployment URLs (`package.json`, `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`, `tests/README.md`, `tests/link-check.mjs` comment) | done | `9572372b` | listed files | Upstream historical URLs in `COORDINATION.md`/`docs/`/`audit/`/`flagged.html` kept verbatim (they are the audit trail) |
+> | COPY-3 Fix `404.html` hardcoded Pages base path `/LIVPBP/` → `/Alert4/` | done | `9572372b` | `404.html` | Would otherwise break CSS on 404s at depth |
+> | COPY-4 README: copy note + live-demo link → Alert4 Pages URL; `flagged.html` §17 copy-session record | done | `9572372b` | `README.md`, `flagged.html` | Flagged page keeps all upstream items verbatim |
+> | COPY-5 Offline verification suite on the copy | done | `9572372b` | no file changes | See verification log below |
+> | COPY-6 Enable GitHub Pages (branch `main`, `/`), PR → `main`, merge, confirm Pages build, record here | done (see record below) | `9572372b` | repo settings + `COORDINATION.md` | |
+>
+> ### Verification log (`9572372b`, 2026-11-25)
+>
+> What was actually checked in this session, and how. **No value was inferred or filled in anywhere.**
+>
+> | When | What was checked | Source | Result |
+> |---|---|---|---|
+> | 2026-11-25 | Copy fidelity: file-by-file `diff -r` of the copy vs upstream `5c02527` (excluding `.git`) | upstream clone | Only the COPY-2/COPY-3/COPY-4 paths differ; everything else byte-identical |
+> | 2026-11-25 | `node tools/restoration-check.mjs` (parses every JS, boots `server.mjs`, exercises static + feed-log round-trip, `/.git/HEAD` → 403) | this repo | ALL CHECKS PASSED |
+> | 2026-11-25 | `npm test` (`tools/smoke-test.mjs`, 64 checks) | this repo | 64 passed, 0 failed |
+> | 2026-11-25 | `node tests/run-all.mjs` (syntax, link-check 41 local refs (pre-merge-2; re-checked as 48 after both merges), contract-check 8 bindings, jsdom render 47/47) | this repo | PASS on all four |
+> | 2026-11-25 | `node tests/props-provenance-test.mjs` | this repo | 5 passed |
+> | 2026-11-25 | Internal link integrity (`tests/link-check.mjs`, covers every `href`/`src`/CSS `url()`, rejects root-absolute paths) | this repo | 41 refs OK |
+> | 2026-11-25 | **Not checked — live MLB StatsAPI.** Egress from this sandbox is restricted to `github.com`, `codeload.github.com`, `api.github.com`, `registry.npmjs.org`, `pypi.org`, `files.pythonhosted.org`; `statsapi.mlb.com`, `www.mlbstatic.com`, `img.mlbstatic.com` and the GitHub Pages sites are unreachable (`curl` → 000). Field-by-field verification therefore rests on the upstream record — [docs/verification-report.md](docs/verification-report.md) (per-field official links) and [docs/statsapi-field-map.md](docs/statsapi-field-map.md) — whose links are preserved verbatim for manual review. The fixtures re-used by the tests were captured from the official API by the upstream sessions (capture URLs in the fixture headers). | this repo docs | Carried forward — see flagged.html §17 C-4 |
+> | 2026-11-25 | Upstream flagged items (F-*, U-*, I-8, L-*, RR-*, D-*, AF-*, R2-*) | flagged.html §§1–14 | Carried verbatim; **none re-verified against the live API in this session**; none resolved |
+>
+> ### Irregularities found during the copy
+>
+> 1. `404.html` hardcoded the upstream Pages prefix (`/LIVPBP/`) — fixed to `/Alert4/` (flagged.html §17 **C-1**).
+> 2. Deployment URLs pointed at upstream (`package.json` homepage, two test files, `tests/README.md`, one comment) — fixed (flagged.html §17 **C-2**).
+> 3. README live-demo link pointed at the upstream site — fixed (flagged.html §17 **C-3**).
+> 4. Outbound network blocks any live re-verification of the StatsAPI payloads in this sandbox — flagged, not worked around (flagged.html §17 **C-4**). The site's runtime behaviour (polling statsapi.mlb.com from visitors' browsers) is unaffected; only this session's verification reach was limited.
+> 5. Upstream docs still link the upstream repo for historical/audit reasons — intentional, kept unchanged; they are manual-review links, not deployment config.
+>
+> ### Deployment record (`9572372b`)
+>
+> PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) merges this file; the exact merge commit is listed on the PR and in `git log --merges` on `main`. Pages was already enabled for this repo (legacy build, `main` → `/`, `https_enforced: true`, confirmed via `gh api repos/kanlerxz87-cyber/Alert4/pages` on 2026-11-25). The merge republishes the site automatically; the post-merge Pages build status and live verification are recorded in the top merge note and on PR #2.
+>
+> ---
+>
+
+> The upstream coordination board is preserved byte-for-byte at [docs/upstream-coordination.md](docs/upstream-coordination.md) — identical to upstream `COORDINATION.md` @ `5c02527` (SHA-256 `500c094f…`). It is history, not part of the Alert4 board.
+
 # COORDINATION.md — shared task board
 
 Repo: `kanlerxz87-cyber/Alert4` · Site: https://kanlerxz87-cyber.github.io/Alert4/
@@ -72,7 +169,6 @@ origin arena/fd8d4cdb-alert4` calls before each push were clean. PR #1 became un
 The following board was published on `main` by PR #3 while this session's copy was in flight. It is reproduced verbatim — nothing from it was discarded. This session (`fd8d4cdb`) took over as final integration and merged both copies.
 
 # COORDINATION.md — Alert4 (LIVPBP copy)
-
 Shared task board for parallel agent sessions. Read before starting work. Claim tasks by writing your session ID and file scope, then commit and push the claim immediately.
 
 ## Status values
@@ -282,6 +378,8 @@ history is by design). Non-blocking.
   merged; all their work is preserved in `main`.
 - **Follow-up record PR:** this integration record itself is delivered via a follow-up PR from
   this branch (linked here once opened).
+
+Integration result recorded during `9572372b`'s merge of `65387ae` into this branch (2026-11-25): this branch then merged `65387ae` and retained the detailed record that session published as PR #7.
 
 ---
 

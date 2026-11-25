@@ -26,7 +26,7 @@
         <strong>This site is the Alert4 copy.</strong> <code>kanlerxz87-cyber/Alert4</code> is a
         byte-for-byte copy of <a href="https://github.com/snapquast73-boop/LIVPBP" target="_blank" rel="noopener">snapquast73-boop/LIVPBP</a>
         at commit <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">5c02527</a>
-        (the exact commit the reference site is built from), made 2026-11-25 by four parallel
+        (the exact commit the reference site is built from), made 2026-11-25 by five parallel
         sessions whose work was merged without discarding any of it. Sections 1–14 are the source
         repo's verification records, preserved verbatim; <a href="#section-15">section 15</a> is
         session <code>fd8d4cdb</code>'s copy checklist (COPY-1…COPY-8);
@@ -128,7 +128,7 @@
         <tr>
           <td>T-11</td>
           <td>Deployed site state before this fix: pages rendered as an inert shell because no stylesheet or script existed.</td>
-          <td><a href="https://snapquast73-boop.github.io/LIVPBP/" target="_blank" rel="noopener">snapquast73-boop.github.io/LIVPBP/</a></td>
+          <td><a href="https://kanlerxz87-cyber.github.io/Alert4/" target="_blank" rel="noopener">kanlerxz87-cyber.github.io/Alert4/</a></td>
           <td class="status-ok">Verified (fetched 2026-11-20)</td>
         </tr>
         <tr>
@@ -728,14 +728,14 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td>R-9</td>
           <td class="wrap">The deployed game page prints the linescore exactly as the official payload does (end-to-end check of the live site, not a fixture).</td>
           <td class="wrap">Game 849799 rendered MIL <code>0 1 0 0 1 2 0 0 0 · 4 8 2</code>, TB <code>0 0 0 0 0 0 0 0 1 · 1 4 0</code> — identical to the official response.</td>
-          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/849799/linescore" target="_blank" rel="noopener">game/849799/linescore</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/game.html?gamePk=849799" target="_blank" rel="noopener">deployed game page</a></td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/849799/linescore" target="_blank" rel="noopener">game/849799/linescore</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=849799" target="_blank" rel="noopener">deployed game page</a></td>
           <td class="status-ok">Verified</td>
         </tr>
         <tr>
           <td>R-10</td>
           <td class="wrap">The deployed scoreboard, replay feed and flagged page all execute and render live data (offseason slate on the audit date).</td>
           <td class="wrap">Scoreboard: “No games scheduled… Most recent date with games: Wed Oct 28, 2026”. Replay feed: 8 summary tiles + scan line. This page: rendered.</td>
-          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/" target="_blank" rel="noopener">deployed /</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html" target="_blank" rel="noopener">reviews.html</a></td>
+          <td class="wrap"><a href="https://kanlerxz87-cyber.github.io/Alert4/" target="_blank" rel="noopener">deployed /</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html" target="_blank" rel="noopener">reviews.html</a></td>
           <td class="status-ok">Verified</td>
         </tr>
         <tr>
@@ -889,7 +889,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap"><code>reviews.html?date=YYYY-MM-DD</code> deep links were ignored (the feed opened “today”).</td>
           <td class="wrap">LIVPBP2 honors the parameter and keeps the URL in step when navigating.</td>
           <td class="wrap">Fixed on <code>main</code> by the parallel session <code>d105b565</code> (PR #23, URL sync) and re-tested by <code>aa6c1d7b</code> (PR #24) while this session was claiming it; verified instead of duplicated.</td>
-          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L66-L67" target="_blank" rel="noopener">LIVPBP2 init/syncDateUI</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live deep link</a></td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L66-L67" target="_blank" rel="noopener">LIVPBP2 init/syncDateUI</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live deep link</a></td>
           <td class="status-ok">Fixed (by PR #23)</td>
         </tr>
         <tr>
@@ -945,7 +945,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap">Irregularity notes were misattributed: the game's first note was repeated on every row of that game (seen live on the 2026-08-28 slate).</td>
           <td class="wrap">The page contract says plays that vanish or edit are “flagged as irregularities for review, never corrected or hidden”.</td>
           <td class="wrap">Fixed: entry-scoped notes render only on their row; game-level notes render once as flagged rows. LIVPBP2 instead has a “Flagged” tab the original filter list does not mention — the original presentation is unrecoverable.</td>
-          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L492-L500" target="_blank" rel="noopener">LIVPBP2 flagged tab</a></td>
+          <td class="wrap"><a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L492-L500" target="_blank" rel="noopener">LIVPBP2 flagged tab</a></td>
           <td class="status-ok">Fixed (presentation unverified)</td>
         </tr>
         <tr>
@@ -1225,16 +1225,16 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       Deployment record (PR number, merge commit, Pages build) is in <a href="COORDINATION.md">COORDINATION.md</a>.
     </p>
     <p style="color:var(--muted);font-size:13px">
-      <strong>Parallel sessions (2026-11-25):</strong> <code>076871a5</code>, <code>fd8d4cdb</code> and <code>arena-f17e9b8e</code> independently copied the same
+      <strong>Parallel sessions (2026-11-25):</strong> <code>076871a5</code>, <code>fd8d4cdb</code>, <code>arena-f17e9b8e</code> and <code>arena/d8da4b48</code> independently copied the same
       upstream tree into this repository on the same day (PRs
       <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">#3</a> merged as <code>f00b6f1</code>,
-      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/1" target="_blank" rel="noopener">#1</a> merged as <code>102f9c4</code> and
-      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/4" target="_blank" rel="noopener">#4</a> merged as <code>65387ae</code>) while
-      this session's PR was in flight. All three branches were merged with this one in sequence; every union is logged in <a href="COORDINATION.md">COORDINATION.md</a>.
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/1" target="_blank" rel="noopener">#1</a> merged as <code>102f9c4</code>,
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/4" target="_blank" rel="noopener">#4</a> merged as <code>65387ae</code> and
+      <a href="https://github.com/kanlerxz87-cyber/Alert4/pull/5" target="_blank" rel="noopener">#5</a> merged as <code>124bfea</code>) while
+      this session's PR was in flight. All four branches were merged with this one in sequence; every union is logged in <a href="COORDINATION.md">COORDINATION.md</a>.
       None of the parallel sessions' site content differed from upstream beyond the deployment adaptations recorded as C-1/C-2/C-3,
-      <code>fd8d4cdb</code>'s CI guard, and <code>arena-f17e9b8e</code>'s verification reports, so sections 1–14 above are unchanged and still describe the code that is live. The
+      <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
       <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
-      A fourth copy PR (<a href="https://github.com/kanlerxz87-cyber/Alert4/pull/5" target="_blank" rel="noopener">#5</a>, branch <code>arena/d8da4b48-alert4</code>) remained open and was not merged or discarded.
     </p>
   </main>
 

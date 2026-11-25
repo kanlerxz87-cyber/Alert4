@@ -1,4 +1,12 @@
-# ⚾ MLB Live PBP — Live MLB Scoreboard & Play-by-Play
+# ⚾ Alert4 — MLB Live PBP (Live Scoreboard & Play-by-Play)
+
+> **Alert4 copy (2026-11-25).** This repository is a working copy of
+> [`snapquast73-boop/LIVPBP`](https://github.com/snapquast73-boop/LIVPBP)
+> (live reference: https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26),
+> set up to run as the Alert4 GitHub Pages site for upcoming game days. The
+> application code, verification notes, and flagged-review items below are carried
+> over from the source and re-verified in this repo where noted.
+
 
 > ### 📋 **COPY NOTE (2026-11-25)** 📋
 > This repository is a copy of the working reference site
@@ -7,15 +15,17 @@
 > at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
 > All 40 tracked upstream files were verified byte-for-byte (SHA-256, zero mismatches) by session
 > `fd8d4cdb`; session `9572372b` independently confirmed byte-identity with `diff -r` apart from the
-> listed adaptations. Four parallel sessions imported the same commit on 2026-11-25 and their work
-> was merged without discarding any of it (see [`COORDINATION.md`](COORDINATION.md)):
-> session `076871a5` retargeted `404.html`'s base path, `package.json`'s homepage and the two
-> test-harness URLs to `/Alert4/`; session `fd8d4cdb` added a Pages-delivery CI guard and the copy
-> verification report; session `arena-f17e9b8e` re-verified every API contract against the official
-> MLB StatsAPI (A4-1…A4-10) and archived the upstream board at
-> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
-> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)); session `9572372b` unioned the
-> copies and added the deployment-URL records, documentation union and link fixes described in
+> listed adaptations. Five parallel copies of the same commit landed in this repository on
+> 2026-11-25 and their work was merged without discarding any of it (see
+> [`COORDINATION.md`](COORDINATION.md)): session `076871a5` retargeted `404.html`'s base path,
+> `package.json`'s homepage and the two test-harness URLs to `/Alert4/`; session `fd8d4cdb` added a
+> Pages-delivery CI guard and the copy verification report; session `arena-f17e9b8e` re-verified
+> every API contract against the official MLB StatsAPI (A4-1…A4-10) and archived the upstream board
+> at [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)); session `arena/d8da4b48`
+> added an Alert4 identity header, renamed `package.json` to `alert4-mlb-live-pbp`, and re-pointed
+> deployed-site links in the audit/docs files at the Alert4 Pages URL; session `9572372b` unioned
+> the copies and added the deployment-URL records, documentation union and link fixes described in
 > `COORDINATION.md`.
 > Copy checks, the official MLB StatsAPI spot-checks and every source link are in
 > [`docs/copy-verification.md`](docs/copy-verification.md) and

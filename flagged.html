@@ -1032,6 +1032,14 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879" target="_blank" rel="noopener">failed job log</a> · <a href="https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest" target="_blank" rel="noopener">Pages builds</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/tests/pages-delivery.mjs" target="_blank" rel="noopener">delivery test</a></td>
           <td class="status-ok">Fixed — guard added</td>
         </tr>
+        <tr>
+          <td>COPY-7</td>
+          <td class="wrap">A second agent session (<code>076871a5</code>) copied the same upstream site to <code>main</code> in PR #3 while this session's copy was in flight.</td>
+          <td class="wrap">Both sessions independently copied commit <code>5c02527</code>; eight files conflicted on merge. Session <code>076871a5</code> had also made repo-local adaptations for the <code>/Alert4/</code> Pages path.</td>
+          <td class="wrap">Integrated both sides without discarding work: kept that session's base-path/homepage/test-URL adaptations, and kept this session's §15 flags, copy checklist, official-source spot-checks and CI guard. Both boards are preserved verbatim in <code>COORDINATION.md</code>; all suites re-run green after the union.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">PR #3</a> · <a href="https://github.com/kanlerxz87-cyber/Alert4/commit/f00b6f187e13278f1b8221bd74d6aea489e430de" target="_blank" rel="noopener">merge commit</a> · <a href="COORDINATION.md">COORDINATION.md</a></td>
+          <td class="status-ok">Fixed — union integrated</td>
+        </tr>
       </tbody>
     </table>
     <p style="color:var(--muted);font-size:13px">

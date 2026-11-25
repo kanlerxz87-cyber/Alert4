@@ -18,7 +18,7 @@ literally. All work below happens on **`arena/fd8d4cdb-alert4`** (branched from
 | C-1 Read board + claim copy/verification/integration work | done | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | Claim committed/pushed before any other file was touched (`5dc701a`). No other branches or claims existed (`git branch -a`, `gh api .../branches`: only `main`) |
 | C-2 Copy the working upstream site (`snapquast73-boop/LIVPBP` @ `5c02527`, main) into this repo | done | `arena-fd8d4cdb-alert4` | all site files: `index.html`, `game.html`, `reviews.html`, `flagged.html`, `404.html`, `assets/**`, `docs/**`, `tests/**`, `tools/**`, `.github/workflows/**`, `server.mjs`, `package*.json`, `.gitignore`, `.nojekyll`, `LICENSE`, `README.md` | Verified source is the exact revision published by the reference site's Pages build. 40/40 tracked files SHA-256 identical; upstream board preserved as `docs/upstream-coordination.md` |
 | C-3 Verify copied files line by line (official MLB StatsAPI links, no inferred values), run all check suites | done | `arena-fd8d4cdb-alert4` | `docs/copy-verification.md` (new), `flagged.html` §15, `README.md` copy note | 64/64 smoke, 47/47 jsdom, 41 links, 8 bindings, restoration + props suites pass; S1–S4 re-fetched from official StatsAPI. `flagged.html` §15 lists COPY-1…COPY-5 |
-| C-4 Integration: PR → `main`, merge, confirm Pages build + live pages, record PR/merge result here | in progress | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | Final integration only; flagged items do not block |
+| C-4 Integration: PR → `main`, merge, confirm Pages build + live pages, record PR/merge result here | in progress | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) open; merged `main` (PR #3, parallel copy) into this branch and resolved 8 add/add conflicts without discarding work; all suites green after the union |
 
 ## Source of truth for the copy
 
@@ -42,19 +42,89 @@ literally. All work below happens on **`arena/fd8d4cdb-alert4`** (branched from
 | 2026-11-25 | Upcoming game days are available from the official schedule (2027-04-06: 15 games) | https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams | Confirmed |
 | 2026-11-25 | Static link/contract/render/smoke/props/server suites on the copied tree | `node tests/run-all.mjs`, `npm test`, `node tools/restoration-check.mjs`, `node tests/props-provenance-test.mjs` | All pass: 41 links, 8 bindings, 47/47 jsdom, 64/64 smoke, restoration ALL PASSED, props 5/5 |
 | 2026-11-25 | Optional live-API render mode from this sandbox | `node tests/jsdom-render-test.mjs --live` | **Inconclusive**: shell egress to statsapi.mlb.com blocked (SSL error) and 13 assertions expect the 2026-08-28 slate; official endpoints were fetched separately. Published as COPY-4 |
-| 2026-11-25 | PR #1 site checks | [PR #1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) · [Actions run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922419) | `dom-smoke` and `test` pass. First `Published Pages delivery` run ([job log](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879)) failed on `ENOENT: deployed/index.html` because Pages was still publishing the pre-copy commit `a24f7e1`. Guard added (COPY-6); check reruns below. |
+| 2026-11-25 | PR #1 site checks | [PR #1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) · [Actions run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922419) | `dom-smoke` and `test` pass. First `Published Pages delivery` run ([job log](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879)) failed on `ENOENT: deployed/index.html` because Pages was still publishing the pre-copy commit `a24f7e1`. Guard added (COPY-6); rerun all three checks passed ([run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45698397545)). |
+| 2026-11-25 | Parallel session `076871a5` published its own copy to `main` | [PR #3](https://github.com/kanlerxz87-cyber/Alert4/pull/3) · [merge commit f00b6f1](https://github.com/kanlerxz87-cyber/Alert4/commit/f00b6f187e13278f1b8221bd74d6aea489e430de) | Discovered by `git fetch` when PR #1 reported `mergeable: false`. Merged `origin/main` into this branch; resolved 8 files, keeping both sessions' work (see "Integration resolution" below). All suites pass on the union. |
 
 Irregularities recorded for review: `COPY-1` (branch constraint), `COPY-2` (upstream reconstruction),
 `COPY-3` (upstream provenance links), `COPY-4` (sandbox live-test limitation), `COPY-5` (no
-values changed — confirmed), `COPY-6` (stale-Pages delivery check; guard added). All are published with source links in
+values changed — confirmed), `COPY-6` (stale-Pages delivery check; guard added), `COPY-7` (parallel duplicate copy, union integrated). All are published with source links in
 [`docs/copy-verification.md`](docs/copy-verification.md) and [`flagged.html`](flagged.html) §15.
 The upstream board and its 14 sections of flags are preserved unchanged in
 [`docs/upstream-coordination.md`](docs/upstream-coordination.md) and `flagged.html` §§1–14.
 
 ## Merge / conflict log
 
-None during the copy (the branch was clean at `a24f7e1` and no other session claimed work).
+Initial copy: none (the branch was clean at `a24f7e1` and no other session had claimed work at
+claim time). Later, parallel session `076871a5` published its own copy to `main` (PR #3);
+`git merge --no-ff origin/main` into this branch conflicted in 8 files. Every side was kept —
+see "Integration resolution" at the end of this board and `flagged.html` COPY-7.
 
-Rebase status: `git fetch origin` showed only `main` and this session's branch; remote `main`
-unchanged at `a24f7e1`. `git pull --rebase origin arena/fd8d4cdb-alert4` found no remote branch
-at claim time; the claim was pushed with `git push -u`. No conflicts encountered.
+Rebase status: `git fetch origin` initially showed only `main` and this session's branch; remote
+`main` was then at `a24f7e1`. `git pull --rebase origin arena/fd8d4cdb-alert4` found no remote
+branch at claim time; the claim was pushed with `git push -u`. Subsequent `git pull --rebase
+origin arena/fd8d4cdb-alert4` calls before each push were clean. PR #1 became unmergeable when
+`main` advanced to PR #3, so `main` was merged into the branch instead of rebased (no force-push).
+
+---
+
+# Preserved board — session `076871a5` (verbatim, merged 2026-11-25)
+
+The following board was published on `main` by PR #3 while this session's copy was in flight. It is reproduced verbatim — nothing from it was discarded. This session (`fd8d4cdb`) took over as final integration and merged both copies.
+
+# COORDINATION.md — Alert4 (LIVPBP copy)
+
+Shared task board for parallel agent sessions. Read before starting work. Claim tasks by writing your session ID and file scope, then commit and push the claim immediately.
+
+## Status values
+- `unclaimed`
+- `in_progress`
+- `done`
+- `needs_review` (published on Flagged for Review page; does not block merge)
+
+## Tasks
+
+| Task | Status | Session | Scope (files/dirs) | Notes |
+|------|--------|---------|--------------------|-------|
+| Copy LIVPBP reference repo into Alert4 and verify site builds/runs | done | 076871a5 | `/` (full repo copy, excluding .git) | Copied from https://github.com/snapquast73-boop/LIVPBP `main@5c02527d3c7a56ea66c698cfabff80a407b6dfd3`. |
+
+## Log
+
+### 2026-11-25T20:40Z — session 076871a5
+- Claimed: "Copy LIVPBP reference repo into Alert4 and verify site builds/runs".
+- Scope: full repository contents (copy from reference repo).
+- Plan: clone reference repo, copy files into Alert4, verify structure/tests/build, create PR, merge, confirm Pages deploy.
+
+### 2026-11-25 — session 076871a5 (completion)
+- **Source copied:** https://github.com/snapquast73-boop/LIVPBP (default branch `main`, commit `5c02527d3c7a56ea66c698cfabff80a407b6dfd3`).
+- **Reference live site:** https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26
+- **Actions:**
+  - Cloned reference repo (depth 1) and copied all files into Alert4 (excluding `.git`); preserved our repo-local COORDINATION.md.
+  - Repo-local adaptations required for Alert4 deployment (recorded, no data fabrication):
+    - `404.html`: base-href detection changed from `/LIVPBP/` to `/Alert4/` so GitHub Pages subpath works in this repo.
+    - `package.json`: `homepage` updated to `https://kanlerxz87-cyber.github.io/Alert4/`.
+    - `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`: test URL base updated to Alert4 Pages URL (test logic unchanged).
+    - `README.md`: added copy note and this-copy/upstream live demo links; historical audit/verification docs retain upstream provenance links.
+- **Verification performed:**
+  - `node tools/restoration-check.mjs` — ALL CHECKS PASSED (file refs, JS parse, server endpoints/static serving, .git/HEAD blocked, atBatIndex 0 merge preserved).
+  - `node tools/smoke-test.mjs` (`npm test`) — **64 passed, 0 failed** (fixtures from official StatsAPI responses per repo tests; includes feed-log merge semantics, static asset integrity, deep-link/date handling, ABS/review parity checks).
+  - `node tests/run-all.mjs` — PASS syntax, PASS link-check (41 local refs), PASS contract-check (8 bindings), PASS jsdom-render-test (47 checks).
+  - Local server smoke: `node server.mjs` on port 8000 returned 200 for `/`, `/index.html`, `/reviews.html`, `/game.html`, `/flagged.html`, `/assets/js/reviews-feed.js`; `reviews.html` contained expected UI IDs (`date-picker`, `feed-list`, `feed-tabs`, `active-strip`, etc.).
+- **Official sources used by the app (as copied from upstream):** MLB StatsAPI endpoints under `https://statsapi.mlb.com/api/` (see `docs/statsapi-field-map.md`, `docs/verification-report.md`, and `flagged.html` in repo for upstream-verified mappings/provenance). No MLB data values were invented in this session.
+- **Irregularities / flags:** None introduced by this copy. Existing upstream flagged/unverified items remain published on `flagged.html` per upstream audit; they do not block merge.
+- **PR / merge / Pages:** to be recorded after PR creation, merge, and Pages deploy verification.
+
+---
+
+## Integration resolution (session `arena-fd8d4cdb-alert4`, 2026-11-25)
+
+`git merge --no-ff origin/main` (merge commit of PR #3) conflicted in eight files because both sessions independently copied the same upstream tree. Resolution kept both sides:
+
+| File(s) | Resolution |
+|---|---|
+| `404.html`, `package.json`, `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs` | Kept session `076871a5`'s repo-local adaptations (`/Alert4/` base path, homepage and test URLs). |
+| `flagged.html` | Kept this session's file, which is the upstream file verbatim plus §15 (COPY-1…COPY-6). Session `076871a5`'s copy of `flagged.html` was SHA-256 identical to upstream, so nothing was lost. |
+| `.github/workflows/pages-delivery.yml` | Kept this session's guard for a published revision that predates the site (COPY-6); session `076871a5`'s copy was SHA-256 identical to upstream. |
+| `README.md` | Unified copy notes: this session's source/commit/copy-verification note + section link, and session `076871a5`'s local `flagged.html` link, this-copy live demo and upstream reference. |
+| `COORDINATION.md` | Kept this session's board (claim done before any file was touched) and appended session `076871a5`'s board verbatim, plus this resolution log. |
+
+No force-push and no discarded work. PR #1 is the integration PR from this branch into `main`; the flagged items do not block it.

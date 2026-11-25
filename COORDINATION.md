@@ -1,65 +1,75 @@
 # COORDINATION.md — shared task board
 
-Repo: `kanlerxz87-cyber/Alert4` · Target reference site: https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26
-Updated 2026-11-25 by session **`d8da4b48`** (branch `arena/d8da4b48-alert4`).
+Repo: `kanlerxz87-cyber/Alert4` · Site: https://kanlerxz87-cyber.github.io/Alert4/
+Updated 2026-11-25 (UTC) by session **`arena-fd8d4cdb-alert4`**.
 
-## Protocol
+## Branch / worktree note (Arena sandbox restriction)
 
-- Read this board before starting. Claim a task by writing your session ID and file scope, then commit and push the claim before starting work.
-- Keep scopes non-overlapping. If you need a file owned by another session, log the request here instead of editing it.
-- Make small, frequent commits and run `git pull --rebase` before every push.
-- If you hit a merge conflict, stop, resolve without discarding other sessions' work, and log it.
-- When done, record sources, verification performed, and any irregularities; mark the task done.
-- Never mark anything verified without checking it against an official source, and link that source.
-- Shared outputs (table data, site index/navigation) are changed only by a final integration session once all other tasks are done.
-- A claim older than 60 minutes with no commits may be taken over; note the handoff.
-
-## Branch / worktree note
-
-Arena fixes each session to one branch. This session works on `arena/d8da4b48-alert4` (base `a24f7e1` on `main`). Per-session `session-<id>/<task>` branches cannot be created in this environment; deviations are logged here.
+Arena fixes this session to one branch and forbids creating or pushing to any other
+branch, so the brief's `session-<id>/<task>` branch rule cannot be followed
+literally. All work below happens on **`arena/fd8d4cdb-alert4`** (branched from
+`main` @ `a24f7e1`); final integration is a pull request from this branch into
+`main`. This deviation is logged as an irregularity for review (AF-COPY-1).
 
 ## Task board
 
 | Task | Status | Session | File scope | Notes |
 |---|---|---|---|---|
-| Copy LIVPBP reference repo into Alert4 and verify site builds/runs | done | `076871a5` | full repo copy | Completed on `main` via PR #3 (`f00b6f1`). Source: https://github.com/snapquast73-boop/LIVPBP `main@5c02527d3c7a56ea66c698cfabff80a407b6dfd3`. See preserved log below. |
-| T1 Copy LIVPBP source into Alert4 and adapt repo identity | done | `d8da4b48` | repo root (initial copy), `README.md`, `package.json`, `404.html`, `COORDINATION.md`, `flagged.html` identity refs | Independent copy on `arena/d8da4b48-alert4`; merged with main after 076871a5 landed. Same source commit `5c02527`. Base path `/LIVPBP/`->`/Alert4/`, homepage/name updated. |
-| T2 Verify copied site builds/runs locally, links/assets resolve, no broken refs | done | `d8da4b48` | `tests/`, `tools/`, site files (read/verify) | `node tools/restoration-check.mjs` -> ALL CHECKS PASSED. `npm test` (`tools/smoke-test.mjs`) -> 64 passed, 0 failed. `node tests/run-all.mjs` -> syntax OK, 41 local refs OK, 8 contract bindings OK, jsdom 47 checks OK. |
-| T3 Verify MLB StatsAPI data paths used by site against official sources | done | `d8da4b48` | `docs/verification-report.md`, `flagged.html` (read/verify) | Sandbox cannot reach statsapi.mlb.com (not in outbound allowlist); verified endpoint paths/shapes against copied source code, source verification docs, and live reference site. Official URLs recorded in verification log. |
-| T4 Final integration: resolve main merge, tests pass, PR to main, merge, confirm Pages deploy | in progress | `d8da4b48` | repo root | Resolving add/add conflicts with origin/main (076871a5 work) preserving both sessions' work. |
+| C-1 Read board + claim copy/verification/integration work | done | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | Claim committed/pushed before any other file was touched (`5dc701a`). No other branches or claims existed (`git branch -a`, `gh api .../branches`: only `main`) |
+| C-2 Copy the working upstream site (`snapquast73-boop/LIVPBP` @ `5c02527`, main) into this repo | done | `arena-fd8d4cdb-alert4` | all site files: `index.html`, `game.html`, `reviews.html`, `flagged.html`, `404.html`, `assets/**`, `docs/**`, `tests/**`, `tools/**`, `.github/workflows/**`, `server.mjs`, `package*.json`, `.gitignore`, `.nojekyll`, `LICENSE`, `README.md` | Verified source is the exact revision published by the reference site's Pages build. 40/40 tracked files SHA-256 identical; upstream board preserved as `docs/upstream-coordination.md` |
+| C-3 Verify copied files line by line (official MLB StatsAPI links, no inferred values), run all check suites | done | `arena-fd8d4cdb-alert4` | `docs/copy-verification.md` (new), `flagged.html` §15, `README.md` copy note | 64/64 smoke, 47/47 jsdom, 41 links, 8 bindings, restoration + props suites pass; S1–S4 re-fetched from official StatsAPI. `flagged.html` §15 lists COPY-1…COPY-5 |
+| C-4 Integration: PR → `main`, merge, confirm Pages build + live pages, record PR/merge result here | done | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) **MERGED** as [102f9c4](https://github.com/kanlerxz87-cyber/Alert4/commit/102f9c42e5f90a295c7b3d013175588670d263c3); Pages built and live pages verified. Open PRs #2/#4/#5 from other sessions were not merged or discarded — see final record. |
+
+## Source of truth for the copy
+
+- Reference page supplied by the user: https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26
+- Publishing repository (GitHub API, verified): https://github.com/snapquast73-boop/LIVPBP
+- Upstream commit copied: [`5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527) (`main`, includes PR #33, the 14-section Flagged for Review page and the reference-parity pass).
+- No values are inferred: every verification row below links an official source, or is left blank and flagged.
 
 ## Verification log
 
-| When | What was checked | Official source | Result |
+| When | What was checked | Official / first-party source | Result |
 |---|---|---|---|
-| 2026-11-25 | Source repo exists and is public; identified files to copy | https://api.github.com/repos/snapquast73-boop/LIVPBP | Confirmed; default branch `main`, commit `5c02527d3c7a56ea66c698cfabff80a407b6dfd3` at fetch time |
-| 2026-11-25 | Live reference site renders replay feed | https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26 | Confirmed page renders with review/challenge/ABS tiles and 3 review rows for 2026-08-26 |
-| 2026-11-25 | Local restoration checks pass after copy/adaptation | `node tools/restoration-check.mjs` (local) | ALL CHECKS PASSED |
-| 2026-11-25 | Local smoke tests pass | `node tools/smoke-test.mjs` (local) | 64 passed, 0 failed |
-| 2026-11-25 | Local full test suite passes | `node tests/run-all.mjs` (local) | syntax OK, link-check 41 refs OK, contract-check 8 bindings OK, jsdom 47 checks OK |
-| 2026-11-25 | MLB schedule endpoint is the documented official source used by scoreboard | https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=YYYY-MM-DD (official MLB StatsAPI) | Not fetched from sandbox (statsapi.mlb.com not in sandbox outbound allowlist). Endpoint/path matches source code and README; reference site uses same endpoint. |
-| 2026-11-25 | MLB gameStatus registry is the documented official source used by reviews | https://statsapi.mlb.com/api/v1/gameStatus (official MLB StatsAPI) | Not fetched from sandbox (allowlist). Endpoint present in `assets/js/reviews.js`/README; carried over from verified source. |
-| 2026-11-25 | MLB eventTypes registry is the documented official source used by replay feed | https://statsapi.mlb.com/api/v1/eventTypes (official MLB StatsAPI) | Not fetched from sandbox (allowlist). Endpoint present in source and verified by source repo docs; carried over. |
+| 2026-11-25 | Reference page is served by `snapquast73-boop/LIVPBP` and shows 3 reviews for 2026-08-26 | https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26 | Confirmed |
+| 2026-11-25 | Upstream repository exists and contains the full working site (HTML + assets + verification docs) | https://api.github.com/repos/snapquast73-boop/LIVPBP | Confirmed |
+| 2026-11-25 | Destination repo Pages source is `main` at site root | https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages | Confirmed (`build_type: legacy`, `source.branch: main`, `path: /`) |
+| 2026-11-25 | Source Pages build used commit `5c02527d3c7a56ea66c698cfabff80a407b6dfd3` (the copied revision) | https://api.github.com/repos/snapquast73-boop/LIVPBP/pages/builds/latest | Confirmed (`status: built`) |
+| 2026-11-25 | 40/40 upstream tracked files copied byte-for-byte (SHA-256) | https://github.com/snapquast73-boop/LIVPBP/tree/5c02527d3c7a56ea66c698cfabff80a407b6dfd3 | Confirmed, 0 mismatches |
+| 2026-11-25 | PHI @ SEA review row `823096:36:p:MF`: description, `reviewType: MF`, `challengeTeamId: 136`, score 6–0 | https://statsapi.mlb.com/api/v1/game/823096/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,isOverturned,inProgress,reviewType,challengeTeamId,matchup,batter,fullName,pitcher | Confirmed; Before-review score remains unobserved (not inferred) |
+| 2026-11-25 | CIN @ SF review row `823180:57:p:MA`: description and score 3–6 | https://statsapi.mlb.com/api/v1/game/823180/playByPlay?fields=allPlays,result,description,awayScore,homeScore,about,atBatIndex,inning,halfInning | Confirmed |
+| 2026-11-25 | CIN @ SF review row `823180:84:p:NF`: description and score 10–9; final linescore 10–9 | https://statsapi.mlb.com/api/v1/game/823180/linescore | Confirmed |
+| 2026-11-25 | Upcoming game days are available from the official schedule (2027-04-06: 15 games) | https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams | Confirmed |
+| 2026-11-25 | Static link/contract/render/smoke/props/server suites on the copied tree | `node tests/run-all.mjs`, `npm test`, `node tools/restoration-check.mjs`, `node tests/props-provenance-test.mjs` | All pass: 41 links, 8 bindings, 47/47 jsdom, 64/64 smoke, restoration ALL PASSED, props 5/5 |
+| 2026-11-25 | Optional live-API render mode from this sandbox | `node tests/jsdom-render-test.mjs --live` | **Inconclusive**: shell egress to statsapi.mlb.com blocked (SSL error) and 13 assertions expect the 2026-08-28 slate; official endpoints were fetched separately. Published as COPY-4 |
+| 2026-11-25 | PR #1 site checks | [PR #1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) · [Actions run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922419) | `dom-smoke` and `test` pass. First `Published Pages delivery` run ([job log](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879)) failed on `ENOENT: deployed/index.html` because Pages was still publishing the pre-copy commit `a24f7e1`. Guard added (COPY-6); rerun all three checks passed ([run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45698397545)). |
+| 2026-11-25 | Parallel session `076871a5` published its own copy to `main` | [PR #3](https://github.com/kanlerxz87-cyber/Alert4/pull/3) · [merge commit f00b6f1](https://github.com/kanlerxz87-cyber/Alert4/commit/f00b6f187e13278f1b8221bd74d6aea489e430de) | Discovered by `git fetch` when PR #1 reported `mergeable: false`. Merged `origin/main` into this branch; resolved 8 files, keeping both sessions' work (see "Integration resolution" below). All suites pass on the union. |
 
-## Irregularities / flagged items
+Irregularities recorded for review: `COPY-1` (branch constraint), `COPY-2` (upstream reconstruction),
+`COPY-3` (upstream provenance links), `COPY-4` (sandbox live-test limitation), `COPY-5` (no
+values changed — confirmed), `COPY-6` (stale-Pages delivery check; guard added), `COPY-7` (parallel duplicate copy, union integrated). All are published with source links in
+[`docs/copy-verification.md`](docs/copy-verification.md) and [`flagged.html`](flagged.html) §15.
+The upstream board and its 14 sections of flags are preserved unchanged in
+[`docs/upstream-coordination.md`](docs/upstream-coordination.md) and `flagged.html` §§1–14.
 
-| ID | Item | Status | Notes |
-|---|---|---|---|
-| F-001 | Arena branch restriction prevents `session-<id>/<task>` branches | logged | All work on `arena/d8da4b48-alert4`; PR used for integration. |
-| F-002 | Historical flagged items inherited from source LIVPBP | needs review | See `flagged.html` — carried over from source repo with source links preserved; not re-adjudicated here except where tests verify behavior. |
-| F-003 | Sandbox cannot directly fetch statsapi.mlb.com | logged | Outbound allowlist does not include statsapi.mlb.com; live MLB API responses were not re-fetched from sandbox. Static site calls MLB StatsAPI from user browser. Official endpoint URLs documented in `docs/verification-report.md` and verification log. |
-| F-004 | Parallel session 076871a5 merged same LIVPBP copy to main (PR #3) while this session worked | logged | Merged origin/main into `arena/d8da4b48-alert4`, resolved add/add conflicts by keeping Alert4-adapted versions and merging COORDINATION/README, preserved 076871a5 log below. |
+## Merge / conflict log
 
-## Merge/conflict log
+Initial copy: none (the branch was clean at `a24f7e1` and no other session had claimed work at
+claim time). Later, parallel session `076871a5` published its own copy to `main` (PR #3);
+`git merge --no-ff origin/main` into this branch conflicted in 8 files. Every side was kept —
+see "Integration resolution" at the end of this board and `flagged.html` COPY-7.
 
-- 2026-11-25: `git merge origin/main` produced add/add conflicts in COORDINATION.md, README.md, package.json, flagged.html, docs/*, audit/*, tests/README.md, tests/link-check.mjs due to parallel copy by session 076871a5 (PR #3, merged as `f00b6f1`). Resolved by: merging COORDINATION.md boards (preserving 076871a5 log), merging README identity notes, keeping Alert4-adapted package/docs/flagged/test files. No other session work discarded.
+Rebase status: `git fetch origin` initially showed only `main` and this session's branch; remote
+`main` was then at `a24f7e1`. `git pull --rebase origin arena/fd8d4cdb-alert4` found no remote
+branch at claim time; the claim was pushed with `git push -u`. Subsequent `git pull --rebase
+origin arena/fd8d4cdb-alert4` calls before each push were clean. PR #1 became unmergeable when
+`main` advanced to PR #3, so `main` was merged into the branch instead of rebased (no force-push).
 
-## Handoff log
+---
 
-| When | From | To | Task | Reason |
-|---|---|---|---|---|
+# Preserved board — session `076871a5` (verbatim, merged 2026-11-25)
 
-## Preserved log — session 076871a5 (from main)
+The following board was published on `main` by PR #3 while this session's copy was in flight. It is reproduced verbatim — nothing from it was discarded. This session (`fd8d4cdb`) took over as final integration and merged both copies.
 
 # COORDINATION.md — Alert4 (LIVPBP copy)
 
@@ -103,3 +113,86 @@ Shared task board for parallel agent sessions. Read before starting work. Claim 
 - **Irregularities / flags:** None introduced by this copy. Existing upstream flagged/unverified items remain published on `flagged.html` per upstream audit; they do not block merge.
 - **PR / merge / Pages:** to be recorded after PR creation, merge, and Pages deploy verification.
 
+---
+
+## Integration resolution (session `arena-fd8d4cdb-alert4`, 2026-11-25)
+
+`git merge --no-ff origin/main` (merge commit of PR #3) conflicted in eight files because both sessions independently copied the same upstream tree. Resolution kept both sides:
+
+| File(s) | Resolution |
+|---|---|
+| `404.html`, `package.json`, `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs` | Kept session `076871a5`'s repo-local adaptations (`/Alert4/` base path, homepage and test URLs). |
+| `flagged.html` | Kept this session's file, which is the upstream file verbatim plus §15 (COPY-1…COPY-6). Session `076871a5`'s copy of `flagged.html` was SHA-256 identical to upstream, so nothing was lost. |
+| `.github/workflows/pages-delivery.yml` | Kept this session's guard for a published revision that predates the site (COPY-6); session `076871a5`'s copy was SHA-256 identical to upstream. |
+| `README.md` | Unified copy notes: this session's source/commit/copy-verification note + section link, and session `076871a5`'s local `flagged.html` link, this-copy live demo and upstream reference. |
+| `COORDINATION.md` | Kept this session's board (claim done before any file was touched) and appended session `076871a5`'s board verbatim, plus this resolution log. |
+
+No force-push and no discarded work. PR #1 is the integration PR from this branch into `main`; the flagged items do not block it.
+
+---
+
+# Final integration record (session `arena-fd8d4cdb-alert4`, 2026-11-25)
+
+- **PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) — MERGED** at 2026-11-25T20:52:16Z.
+  Merge commit [`102f9c4`](https://github.com/kanlerxz87-cyber/Alert4/commit/102f9c42e5f90a295c7b3d013175588670d263c3).
+  All three PR checks were green before merge: `test` (64/64), `dom-smoke` (47/47 jsdom),
+  `verify`/`Published Pages delivery` (guard-added version).
+- **GitHub Pages:** [builds API](https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest)
+  → `status: built`, commit `102f9c42e5f90a295c7b3d013175588670d263c3`, site
+  https://kanlerxz87-cyber.github.io/Alert4/. The post-merge
+  [delivery run 45699144189](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45699144189)
+  succeeded: the published HTML/assets match the deployed commit byte-for-byte.
+- **Live verification after the build:**
+  - [Replay feed for the supplied date](https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26)
+    renders the same three reference rows (PHI @ SEA `823096:36:p:MF`, CIN @ SF `823180:57:p:MA`
+    and `823180:84:p:NF`) with official MLB API links and “not observed” Before scores. The
+    later scan shows more entries than the reference snapshot; that difference is flagged as
+    COPY-8, with the extra row re-checked against the official play-by-play.
+  - [Game view](https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=823096&date=2026-08-26)
+    renders linescore and box score with per-row official source links; “–” means absent in
+    the official payload.
+  - [Upcoming game day 2027-04-06](https://kanlerxz87-cyber.github.io/Alert4/index.html?date=2027-04-06)
+    renders all 15 games from the [official schedule](https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams)
+    — no hard-coded game data.
+  - [Flagged for Review](https://kanlerxz87-cyber.github.io/Alert4/flagged.html) sections 1–15
+    are live; the copy-specific items are COPY-1…COPY-8 with source links.
+  - The site-check link and contract checks report 44 local references and 8 DOM bindings with
+    no broken links after the integration.
+- **Other sessions:** PRs [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2),
+  [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) and
+  [#5](https://github.com/kanlerxz87-cyber/Alert4/pull/5) were opened by other sessions for the
+  same copy task after this session had already claimed and pushed it. They were **left open
+  and untouched** — nothing from their work was discarded or merged by this session. Their
+  owners are asked to rebase onto `main` and avoid overwriting the merged integration; the
+  flagged/unverified items do not block anything and are published on the site.
+- **Sources used (all first-party/official):** [upstream commit 5c02527](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3)
+  and its [Pages build](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages/builds/latest);
+  [MLB StatsAPI play-by-play 823096](https://statsapi.mlb.com/api/v1/game/823096/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,isOverturned,inProgress,reviewType,challengeTeamId,matchup,batter,fullName,pitcher),
+  [823180](https://statsapi.mlb.com/api/v1/game/823180/playByPlay?fields=allPlays,result,description,awayScore,homeScore,about,atBatIndex,inning,halfInning) and
+  [823180 linescore](https://statsapi.mlb.com/api/v1/game/823180/linescore),
+  [823015](https://statsapi.mlb.com/api/v1/game/823015/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,reviewType,challengeTeamId,matchup,batter,fullName,pitcher),
+  [2027-04-06 schedule](https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams).
+- Full line-by-line record: [`docs/copy-verification.md`](docs/copy-verification.md).
+
+---
+
+## Addendum — session d8da4b48 (arena/d8da4b48-alert4, 2026-11-25)
+
+Independent parallel copy of LIVPBP into Alert4, performed on `arena/d8da4b48-alert4` while sessions 076871a5 and fd8d4cdb also worked. Merged into main's history via PR #5 resolution.
+
+| Task | Status | Session | Notes |
+|---|---|---|---|
+| Copy LIVPBP source (main@5c02527d3c7a56ea66c698cfabff80a407b6dfd3) into Alert4 | done | d8da4b48 | https://github.com/snapquast73-boop/LIVPBP |
+| Adapt identity (base path /LIVPBP/->/Alert4/, package.json, README) | done | d8da4b48 | 404 base path, homepage, name/description updated |
+| Local verification | done | d8da4b48 | `node tools/restoration-check.mjs` ALL CHECKS PASSED; `npm test` 64 passed, 0 failed; `node tests/run-all.mjs` syntax/link(41)/contract(8)/jsdom(47) OK |
+| Merge origin/main conflicts (076871a5, fd8d4cdb) | done | d8da4b48 | Preserved other sessions' work; kept Alert4-adapted docs/tests/flagged; merged COORDINATION boards |
+
+### Verification (d8da4b48)
+- Source: https://api.github.com/repos/snapquast73-boop/LIVPBP (commit 5c02527d3c7a56ea66c698cfabff80a407b6dfd3)
+- Live reference: https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26 (rendered 3 review rows)
+- Official MLB StatsAPI endpoints documented/used by site: https://statsapi.mlb.com/api/v1/schedule, /api/v1/gameStatus, /api/v1/eventTypes, /api/v1.1/game/{gamePk}/feed/live, /api/v1/game/{gamePk}/playByPlay (not re-fetched from sandbox; statsapi.mlb.com not in outbound allowlist; see F-003).
+
+### Irregularities (d8da4b48)
+- F-d8da4b48-1: Arena branch restriction prevented `session-<id>/<task>` branches (used `arena/d8da4b48-alert4`).
+- F-d8da4b48-2: Sandbox cannot directly fetch statsapi.mlb.com; live API re-fetch not performed from sandbox. Site is static browser app; endpoints verified via source/docs/reference.
+- F-d8da4b48-3: Parallel sessions merged same copy to main; conflicts resolved without discarding other sessions' work.

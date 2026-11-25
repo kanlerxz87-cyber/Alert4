@@ -8,6 +8,22 @@
 > over from the source and re-verified in this repo where noted.
 
 
+> ### 📋 **COPY NOTE (2026-11-25)** 📋
+> This repository is a byte-for-byte copy of the working reference site
+> [`snapquast73-boop/LIVPBP` @ `5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3),
+> the revision published on [GitHub Pages](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26)
+> at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
+> All 40 tracked upstream files were initially verified by SHA-256 with zero mismatches; no
+> site data or verification value was edited. Two later, repo-local adaptations are preserved:
+> session `076871a5` retargeted `404.html`'s base path, `package.json`'s homepage and the two
+> test-harness URLs to `/Alert4/`, and session `fd8d4cdb` added a Pages-delivery CI guard.
+> Copy checks, the official MLB StatsAPI spot-checks and every source link are in
+> [`docs/copy-verification.md`](docs/copy-verification.md).
+> Copy-specific deviations are published on the
+> [**⚑ Flagged for Review**](flagged.html#15-copy-into-alert4-session-arena-fd8d4cdb-alert4-2026-11-25)
+> page (section 15); the upstream site's own flags remain in sections 1–14. External links to
+> the upstream repository are provenance links for manual review, not internal navigation.
+
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️
 > This repository was uploaded incomplete: the three HTML pages referenced a stylesheet and nine
 > scripts under `assets/` that were **not** part of the upload, so GitHub Pages served an unstyled,

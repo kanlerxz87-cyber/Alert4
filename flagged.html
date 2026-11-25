@@ -970,6 +970,95 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       RR-05 is answered by R2-3.
     </p>
 
+    <h2>15. Copy into Alert4 (session <code>arena-fd8d4cdb-alert4</code>, 2026-11-25)</h2>
+    <p>
+      This repository is a byte-for-byte copy of the working reference site at
+      <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">snapquast73-boop/LIVPBP @ 5c02527</a>,
+      the revision that the <a href="https://api.github.com/repos/snapquast73-boop/LIVPBP/pages/builds/latest" target="_blank" rel="noopener">source repo's Pages build</a>
+      had published when the copy was made. No site value was changed or inferred.
+      Full copy checklist and official source links:
+      <a href="docs/copy-verification.md">docs/copy-verification.md</a>.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Item</th><th>What the sources say</th><th>What was done</th><th>Source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>COPY-1</td>
+          <td class="wrap">Arena pins each session to one branch, so the brief's <code>session-&lt;id&gt;/&lt;task&gt;</code> branch rule cannot be followed literally.</td>
+          <td class="wrap">The task board asks for per-session branches; the sandbox only permits the session's existing branch.</td>
+          <td class="wrap">All work is on <code>arena/fd8d4cdb-alert4</code> with integration by PR to <code>main</code>; recorded on the board.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/blob/arena/fd8d4cdb-alert4/COORDINATION.md" target="_blank" rel="noopener">COORDINATION.md</a> · <a href="https://api.github.com/repos/kanlerxz87-cyber/Alert4/branches" target="_blank" rel="noopener">branch list</a></td>
+          <td class="status-flag">Flagged — environment deviation</td>
+        </tr>
+        <tr>
+          <td>COPY-2</td>
+          <td class="wrap">The upstream site's original <code>assets/</code> were never published; the working site is a documented reconstruction, not the lost original code.</td>
+          <td class="wrap">At the original upload commit the pages referenced nine missing scripts and a stylesheet; the original demo repository returns 404.</td>
+          <td class="wrap">Copied the working reconstruction verbatim. All pre-existing deviations remain published in sections 1–14; none were silently changed.</td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/docs/verification-report.md" target="_blank" rel="noopener">upstream verification report</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/commit/aef1a74c40143a7fff9d24853418002e008b79b1" target="_blank" rel="noopener">upload commit</a></td>
+          <td class="status-flag">Flagged — inherited limitation</td>
+        </tr>
+        <tr>
+          <td>COPY-3</td>
+          <td class="wrap">The copied documentation and flagged page link to the upstream repository and reference site as evidence.</td>
+          <td class="wrap">Those links identify where every claim was verified; they are not navigation for this deployment.</td>
+          <td class="wrap">Kept verbatim as provenance. Every in-site link is relative and resolved by the link checker (41 references, 0 broken).</td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/flagged.html" target="_blank" rel="noopener">upstream flagged page</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/tests/link-check.mjs" target="_blank" rel="noopener">link-check</a></td>
+          <td class="status-flag">Flagged — intentional provenance</td>
+        </tr>
+        <tr>
+          <td>COPY-4</td>
+          <td class="wrap">The optional live-API render mode could not run to completion in this build sandbox.</td>
+          <td class="wrap">Shell egress to <code>statsapi.mlb.com</code> fails with an SSL connect error, and the test's 13 date-specific assertions expect the 2026-08-28 slate instead of today's empty offseason slate.</td>
+          <td class="wrap">The deterministic official-fixture run passes 47/47, and the three reference entries plus an upcoming schedule were re-fetched from the official API and checked by hand. No missing value was filled in.</td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/tests/jsdom-render-test.mjs" target="_blank" rel="noopener">render test</a> · <a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2026-08-28&amp;hydrate=probablePitcher,linescore,decisions,review" target="_blank" rel="noopener">official schedule used</a></td>
+          <td class="status-unverified">Flagged — verification limitation</td>
+        </tr>
+        <tr>
+          <td>COPY-5</td>
+          <td class="wrap">No upstream value was altered: “not observed” / unverified / blank cells stay exactly as published.</td>
+          <td class="wrap">The reference rows for <code>823096:36:p:MF</code>, <code>823180:57:p:MA</code> and <code>823180:84:p:NF</code> show their Before scores as unobserved.</td>
+          <td class="wrap">Byte-for-byte SHA-256 comparison of all 40 tracked files returned zero mismatches; only this board, the copy checklist and the copy note were added.</td>
+          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">copied commit</a></td>
+          <td class="status-ok">Confirmed</td>
+        </tr>
+        <tr>
+          <td>COPY-6</td>
+          <td class="wrap">The first PR run of the <code>Published Pages delivery</code> check failed with <code>ENOENT: deployed/index.html</code>.</td>
+          <td class="wrap">At that moment the published revision was the pre-copy <code>main</code> commit <code>a24f7e1</code>, which contains no site; the comparison had nothing to compare. The two actual site checks passed.</td>
+          <td class="wrap">The workflow now skips only a published revision without <code>index.html</code> and still performs the byte-for-byte comparison on the first real Pages build after merge. This workflow is the only upstream file intentionally changed in this copy.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879" target="_blank" rel="noopener">failed job log</a> · <a href="https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest" target="_blank" rel="noopener">Pages builds</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/tests/pages-delivery.mjs" target="_blank" rel="noopener">delivery test</a></td>
+          <td class="status-ok">Fixed — guard added</td>
+        </tr>
+        <tr>
+          <td>COPY-7</td>
+          <td class="wrap">A second agent session (<code>076871a5</code>) copied the same upstream site to <code>main</code> in PR #3 while this session's copy was in flight.</td>
+          <td class="wrap">Both sessions independently copied commit <code>5c02527</code>; eight files conflicted on merge. Session <code>076871a5</code> had also made repo-local adaptations for the <code>/Alert4/</code> Pages path.</td>
+          <td class="wrap">Integrated both sides without discarding work: kept that session's base-path/homepage/test-URL adaptations, and kept this session's §15 flags, copy checklist, official-source spot-checks and CI guard. Both boards are preserved verbatim in <code>COORDINATION.md</code>; all suites re-run green after the union.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/pull/3" target="_blank" rel="noopener">PR #3</a> · <a href="https://github.com/kanlerxz87-cyber/Alert4/commit/f00b6f187e13278f1b8221bd74d6aea489e430de" target="_blank" rel="noopener">merge commit</a> · <a href="COORDINATION.md">COORDINATION.md</a></td>
+          <td class="status-ok">Fixed — union integrated</td>
+        </tr>
+        <tr>
+          <td>COPY-8</td>
+          <td class="wrap">Live snapshot difference: the reference feed (fetched 3:38:33 PM) showed 3 reviews / 76 tracked entries; this deployment (fetched 3:49:15 PM) showed 10 reviews / 78 tracked entries.</td>
+          <td class="wrap">The three reference rows are identical word-for-word in both feeds, including “not observed” Before scores. The extra BAL @ STL row was checked against the official play-by-play: <code>823015:34:p:MF</code>, <code>MF</code>, team 138, 7–1.</td>
+          <td class="wrap">No value was invented. The pages were fetched at different times and the feed labels its store “local log only”; the exact cause of the count difference cannot be independently verified, so it is flagged rather than explained away.</td>
+          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference feed</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26" target="_blank" rel="noopener">this feed</a> · <a href="https://statsapi.mlb.com/api/v1/game/823015/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,reviewType,challengeTeamId,matchup,batter,fullName,pitcher" target="_blank" rel="noopener">official play 823015:34</a></td>
+          <td class="status-unverified">Flagged — dynamic snapshot difference</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      Copy-time checks: 40/40 files byte-identical · <code>npm test</code> 64 passed ·
+      <code>node tests/run-all.mjs</code> 47/47 render checks ·
+      <code>node tools/restoration-check.mjs</code> ALL PASSED ·
+      <code>node tests/props-provenance-test.mjs</code> 5 passed.
+      Reference rows S1–S3 and the 2027-04-06 schedule (S4) were re-checked against the official
+      MLB StatsAPI; links are in <a href="docs/copy-verification.md">docs/copy-verification.md</a>.
+    </p>
+
   </main>
 
   <footer class="site-footer">

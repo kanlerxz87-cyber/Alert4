@@ -244,3 +244,13 @@ history is by design). Non-blocking.
 
 - PR: https://github.com/kanlerxz87-cyber/Alert4/pull/4 (branch `arena/f17e9b8e-alert4` → `main`)
 - Merge result / Pages deploy: appended after merge + deploy verification.
+
+
+---
+
+## Addendum — session d8da4b48 (arena/d8da4b48-alert4, 2026-11-25)
+
+Independent parallel copy of LIVPBP (main@5c02527d3c7a56ea66c698cfabff80a407b6dfd3) into Alert4. Work merged/rebased against main multiple times preserving all other sessions' work.
+- Verification: `node tools/restoration-check.mjs` ALL CHECKS PASSED; `npm test` 64 passed, 0 failed; `node tests/run-all.mjs` syntax/link(41)/contract(8)/jsdom(47) OK.
+- Official sources: https://statsapi.mlb.com (MLB StatsAPI, documented in docs); sandbox allowlist prevented direct fetch (F-d8da4b48-2).
+- Irregularities: F-d8da4b48-1 branch restriction; F-d8da4b48-2 sandbox MLB API unreachable; F-d8da4b48-3 parallel-session merge conflicts resolved without discarding work.

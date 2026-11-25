@@ -126,7 +126,7 @@
         <tr>
           <td>T-11</td>
           <td>Deployed site state before this fix: pages rendered as an inert shell because no stylesheet or script existed.</td>
-          <td><a href="https://snapquast73-boop.github.io/LIVPBP/" target="_blank" rel="noopener">snapquast73-boop.github.io/LIVPBP/</a></td>
+          <td><a href="https://kanlerxz87-cyber.github.io/Alert4/" target="_blank" rel="noopener">kanlerxz87-cyber.github.io/Alert4/</a></td>
           <td class="status-ok">Verified (fetched 2026-11-20)</td>
         </tr>
         <tr>
@@ -726,14 +726,14 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td>R-9</td>
           <td class="wrap">The deployed game page prints the linescore exactly as the official payload does (end-to-end check of the live site, not a fixture).</td>
           <td class="wrap">Game 849799 rendered MIL <code>0 1 0 0 1 2 0 0 0 · 4 8 2</code>, TB <code>0 0 0 0 0 0 0 0 1 · 1 4 0</code> — identical to the official response.</td>
-          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/849799/linescore" target="_blank" rel="noopener">game/849799/linescore</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/game.html?gamePk=849799" target="_blank" rel="noopener">deployed game page</a></td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/849799/linescore" target="_blank" rel="noopener">game/849799/linescore</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=849799" target="_blank" rel="noopener">deployed game page</a></td>
           <td class="status-ok">Verified</td>
         </tr>
         <tr>
           <td>R-10</td>
           <td class="wrap">The deployed scoreboard, replay feed and flagged page all execute and render live data (offseason slate on the audit date).</td>
           <td class="wrap">Scoreboard: “No games scheduled… Most recent date with games: Wed Oct 28, 2026”. Replay feed: 8 summary tiles + scan line. This page: rendered.</td>
-          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/" target="_blank" rel="noopener">deployed /</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html" target="_blank" rel="noopener">reviews.html</a></td>
+          <td class="wrap"><a href="https://kanlerxz87-cyber.github.io/Alert4/" target="_blank" rel="noopener">deployed /</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html" target="_blank" rel="noopener">reviews.html</a></td>
           <td class="status-ok">Verified</td>
         </tr>
         <tr>
@@ -887,7 +887,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap"><code>reviews.html?date=YYYY-MM-DD</code> deep links were ignored (the feed opened “today”).</td>
           <td class="wrap">LIVPBP2 honors the parameter and keeps the URL in step when navigating.</td>
           <td class="wrap">Fixed on <code>main</code> by the parallel session <code>d105b565</code> (PR #23, URL sync) and re-tested by <code>aa6c1d7b</code> (PR #24) while this session was claiming it; verified instead of duplicated.</td>
-          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L66-L67" target="_blank" rel="noopener">LIVPBP2 init/syncDateUI</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live deep link</a></td>
+          <td class="wrap"><a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L66-L67" target="_blank" rel="noopener">LIVPBP2 init/syncDateUI</a> · <a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live deep link</a></td>
           <td class="status-ok">Fixed (by PR #23)</td>
         </tr>
         <tr>
@@ -943,7 +943,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap">Irregularity notes were misattributed: the game's first note was repeated on every row of that game (seen live on the 2026-08-28 slate).</td>
           <td class="wrap">The page contract says plays that vanish or edit are “flagged as irregularities for review, never corrected or hidden”.</td>
           <td class="wrap">Fixed: entry-scoped notes render only on their row; game-level notes render once as flagged rows. LIVPBP2 instead has a “Flagged” tab the original filter list does not mention — the original presentation is unrecoverable.</td>
-          <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L492-L500" target="_blank" rel="noopener">LIVPBP2 flagged tab</a></td>
+          <td class="wrap"><a href="https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-28" target="_blank" rel="noopener">live feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP2/blob/cbcdddece88023ca512a18b7a1165b77d2caa7a7/assets/js/reviews-feed.js#L492-L500" target="_blank" rel="noopener">LIVPBP2 flagged tab</a></td>
           <td class="status-ok">Fixed (presentation unverified)</td>
         </tr>
         <tr>

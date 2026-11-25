@@ -29,7 +29,7 @@ There is **no `assets/` directory**, although the three pages load:
 | `game.html` | `assets/css/style.css` | + `props.js`, `game.js` | <https://github.com/snapquast73-boop/LIVPBP/blob/aef1a74c40143a7fff9d24853418002e008b79b1/game.html> |
 | `reviews.html` | `assets/css/style.css` | + `reviews-feed.js` | <https://github.com/snapquast73-boop/LIVPBP/blob/aef1a74c40143a7fff9d24853418002e008b79b1/reviews.html> |
 
-Consequence, confirmed on the deployed site (<https://snapquast73-boop.github.io/LIVPBP/>): the
+Consequence, confirmed on the deployed site (<https://kanlerxz87-cyber.github.io/Alert4/>): the
 page renders its static shell only — no games, no styling, no polling.
 
 ## 2. Why the assets could not be restored
@@ -59,7 +59,7 @@ endpoints, cadences, feature list). This is recorded as `U-6` on `flagged.html`.
 | T-8 | Run attribution: `runners[].details{isScoringEvent, playIndex}` where `playIndex` indexes `playEvents[]` | <https://statsapi.mlb.com/api/v1/game/824466/playByPlay> |
 | T-9 | Team logos at `https://www.mlbstatic.com/team-logos/team-cap-on-dark/{teamId}.svg` | <https://www.mlbstatic.com/team-logos/team-cap-on-dark/119.svg> (URL documented in the README; host not reachable from the build sandbox) |
 | T-10 | Official scoring changes are made by the Official Scorer / Elias / after club review | <https://www.mlb.com/official-information/scoring-changes> |
-| T-11 | Pre-fix deployed site was an inert shell | <https://snapquast73-boop.github.io/LIVPBP/> |
+| T-11 | Pre-fix deployed site was an inert shell | <https://kanlerxz87-cyber.github.io/Alert4/> |
 
 Real review events observed in game `823109` on 2026-08-01 (used to shape the parser and the
 test fixtures): `MJ` overturned, `MD` stands, `MA` overturned, `NA` stands.
@@ -135,8 +135,8 @@ publish the value; no cell is inferred.
 | R-6 | Season lines at `boxscore.teams.<side>.players.ID<id>.seasonStats` | `ID806198.seasonStats.batting = {hits:17, avg:".354", atBats:48}` | <https://statsapi.mlb.com/api/v1/game/849799/boxscore> | Verified |
 | R-7 | `os_ruling_pending_primary` / `_prior` are real event types | both present, description “Official Scorer Ruling Pending” | <https://statsapi.mlb.com/api/v1/eventTypes> | Verified |
 | R-8 | ABS / manager challenge counters for game 849799 | `absChallenges.away/home = {usedSuccessful:1, usedFailed:0, remaining:2}`, `review.away/home = {used:0, remaining:2}` — matches the two overturned ABS chips the page printed | <https://statsapi.mlb.com/api/v1.1/game/849799/feed/live?fields=gameData,absChallenges,hasChallenges,away,home,usedSuccessful,usedFailed,remaining,review,used> | Verified |
-| R-9 | Deployed game page reproduces the official linescore for game 849799 | MIL `0 1 0 0 1 2 0 0 0 · 4 8 2`, TB `0 0 0 0 0 0 0 0 1 · 1 4 0` — identical | <https://statsapi.mlb.com/api/v1/game/849799/linescore> · <https://snapquast73-boop.github.io/LIVPBP/game.html?gamePk=849799> | Verified |
-| R-10 | Deployed scoreboard / replay feed / flagged page execute and render | offseason slate: scoreboard offers `Wed Oct 28, 2026`; feed renders 8 summary tiles + scan line | <https://snapquast73-boop.github.io/LIVPBP/> · <https://snapquast73-boop.github.io/LIVPBP/reviews.html> | Verified |
+| R-9 | Deployed game page reproduces the official linescore for game 849799 | MIL `0 1 0 0 1 2 0 0 0 · 4 8 2`, TB `0 0 0 0 0 0 0 0 1 · 1 4 0` — identical | <https://statsapi.mlb.com/api/v1/game/849799/linescore> · <https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=849799> | Verified |
+| R-10 | Deployed scoreboard / replay feed / flagged page execute and render | offseason slate: scoreboard offers `Wed Oct 28, 2026`; feed renders 8 summary tiles + scan line | <https://kanlerxz87-cyber.github.io/Alert4/> · <https://kanlerxz87-cyber.github.io/Alert4/reviews.html> | Verified |
 | R-11 | `?date=YYYY-MM-DD` deep links on the scoreboard and the replay feed | added this pass; URL follows the selected date; 3 new checks in `tools/smoke-test.mjs` §[11] | <https://github.com/snapquast73-boop/LIVPBP/blob/main/tools/smoke-test.mjs> | Verified |
 
 ### Irregularities opened in this pass

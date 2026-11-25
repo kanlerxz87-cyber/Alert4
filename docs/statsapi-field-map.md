@@ -4,7 +4,7 @@
 > the owner-facing summary of everything flagged or unverified is [`flagged.html`](../flagged.html).
 > Session `7e3aaa61`, 2026-11-20.
 
-- **Repository:** `snapquast73-boop/LIVPBP` — site: <https://snapquast73-boop.github.io/LIVPBP/>
+- **Repository:** `snapquast73-boop/LIVPBP` — site: <https://kanlerxz87-cyber.github.io/Alert4/>
 - **Audit date:** 2026-11-20 (UTC). All responses below were read on that date.
 - **Why this document exists:** the upload this repository started from
   (`aef1a74 "Add files via upload"`) contained only `index.html`, `game.html`, `reviews.html`,
@@ -52,7 +52,7 @@ listed here (or in the "not verified" list in §4).
 | 14 | Team names/abbreviations loaded at runtime (not hard-coded) | `teams[]{id,name,teamName,abbreviation,teamCode,fileCode}` for `sportId=1` | [`/api/v1/teams?sportId=1`](https://statsapi.mlb.com/api/v1/teams?sportId=1) |
 | 15 | Persistence backend contract used by `assets/js/feed-log.js` | `GET /api/feed-log?date=`, `POST /api/feed-log`, `GET /api/feed-log/stream?date=` (SSE `event: feed-log`), `GET /api/health` — all exercised locally with `node server.mjs` (see §3) | [`server.mjs`](../server.mjs) · [`github.com/snapquast73-boop/LIVPBP/blob/main/server.mjs`](https://github.com/snapquast73-boop/LIVPBP/blob/main/server.mjs) |
 | 18 | Expected batting average (`xBA`), career H2H (`vsPlayer`), and `pitchNumber` | `expectedStatistics.splits[].stat.avg` (`".277"` on 682829), `vsPlayerTotal.splits[].stat{atBats,hits,avg}`, and `playEvents[].pitchNumber` (`3` on game 823243 play 54) | [`/api/v1/people/682829/stats?stats=expectedStatistics`](https://statsapi.mlb.com/api/v1/people/682829/stats?stats=season,expectedStatistics&group=hitting&season=2026) · [`/api/v1/people/682829/stats?stats=vsPlayer`](https://statsapi.mlb.com/api/v1/people/682829/stats?stats=vsPlayer&group=hitting&opposingPlayerId=656849) · [`/api/v1/game/823243/playByPlay`](https://statsapi.mlb.com/api/v1/game/823243/playByPlay?fields=allPlays,about,atBatIndex,playEvents,pitchNumber,reviewDetails,reviewType) |
-| 16 | GitHub Pages configuration of this repository | `{"status":"built","html_url":"https://snapquast73-boop.github.io/LIVPBP/","build_type":"legacy","source":{"branch":"main","path":"/"}}` | [`/repos/snapquast73-boop/LIVPBP/pages`](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages) |
+| 16 | GitHub Pages configuration of this repository | `{"status":"built","html_url":"https://kanlerxz87-cyber.github.io/Alert4/","build_type":"legacy","source":{"branch":"main","path":"/"}}` | [`/repos/snapquast73-boop/LIVPBP/pages`](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages) |
 | 17 | Original upstream project named as the demo | GitHub API returns `404 Not Found`; `git ls-remote` returns "Repository not found" → no byte-for-byte recovery of the original client | [`/repos/buffedlizard55-lab/MLB-Live-PBP`](https://api.github.com/repos/buffedlizard55-lab/MLB-Live-PBP) |
 
 ## 3. Local checks run on the integrated tree

@@ -1,4 +1,12 @@
-# ⚾ MLB Live PBP — Live MLB Scoreboard & Play-by-Play
+# ⚾ Alert4 — MLB Live PBP (Live Scoreboard & Play-by-Play)
+
+> **Alert4 copy (2026-11-25).** This repository is a working copy of
+> [`snapquast73-boop/LIVPBP`](https://github.com/snapquast73-boop/LIVPBP)
+> (live reference: https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26),
+> set up to run as the Alert4 GitHub Pages site for upcoming game days. The
+> application code, verification notes, and flagged-review items below are carried
+> over from the source and re-verified in this repo where noted.
+
 
 > ### 📋 **COPY NOTE (2026-11-25)** 📋
 > This repository is a byte-for-byte copy of the working reference site

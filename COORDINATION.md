@@ -15,7 +15,7 @@ active for this repo) is preserved byte-for-byte at
 > | `fd8d4cdb` | [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) | **MERGED** 2026-11-25T~21:05Z (merge commit `102f9c4`) | Copy + `docs/copy-verification.md` (SHA-256 byte-identity of all 40 files, official-source spot-checks S1–S4 incl. live StatsAPI fetches), `flagged.html` §15 (COPY-1…COPY-8), Pages-delivery CI guard (skip only a published revision without `index.html`), upstream board moved to `docs/upstream-coordination.md`. |
 > | `arena-f17e9b8e` | [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) | **MERGED** 2026-11-25 (merge commit `65387ae`) | Independent re-verification of every API contract against the official MLB StatsAPI (A4-1…A4-10, `docs/verification-report-alert4.md` and `flagged.html` §16), upstream board archived at `audit/source-repo-COORDINATION.md`, 2027 schedule verification. |
 > | `arena/d8da4b48` | [#5](https://github.com/kanlerxz87-cyber/Alert4/pull/5) | **MERGED** 2026-11-25 (merge commit `124bfea`) | Alert4 identity header in `README.md`, `package.json` renamed to `alert4-mlb-live-pbp` with Alert4 description, deployed-site links in `audit/` and `docs/verification-report.md` re-pointed to the Alert4 Pages URL. |
-> | `9572372b` | [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) | **OPEN** (this branch) — pending merge; the final union record is appended after it lands | `flagged.html` §17 (C-1…C-5), union of all copy sessions in this file, Alert4-local link fixes in `tests/README.md` and `tests/link-check.mjs`, `README.md` COPY NOTE. |
+> | `9572372b` | [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) | **MERGED** 2026-11-25T21:08:53Z (merge commit `0c8d927`) | `flagged.html` §17 (C-1…C-5), union of all copy sessions in this file, Alert4-local link fixes in `tests/README.md` and `tests/link-check.mjs`, `README.md` COPY NOTE. Deployment recorded in the follow-up record appended below. |
 >
 > **Merge 1 — `9572372b` merges `origin/main` (PR #3, `f00b6f1`) into `arena/9572372b-alert4`** (conflicts: `COORDINATION.md`, `README.md`, `flagged.html`, `package.json`, `tests/README.md`, `tests/link-check.mjs`): unioned both boards in `COORDINATION.md`; kept both the COPY NOTE and the this-copy/upstream live-demo block in `README.md`; kept this branch's `flagged.html` (upstream + its §15 at the time); kept upstream bytes for `package.json`'s em-dash description; kept this branch's `/Alert4/` `tests/link-check.mjs` comment and Alert4 blob URLs in `tests/README.md`. Nothing was discarded.
 >
@@ -389,3 +389,31 @@ Independent parallel copy of LIVPBP (main@5c02527d3c7a56ea66c698cfabff80a407b6df
 - Verification: `node tools/restoration-check.mjs` ALL CHECKS PASSED; `npm test` 64 passed, 0 failed; `node tests/run-all.mjs` syntax/link(41)/contract(8)/jsdom(47) OK.
 - Official sources: https://statsapi.mlb.com (MLB StatsAPI, documented in docs); sandbox allowlist prevented direct fetch (F-d8da4b48-2).
 - Irregularities: F-d8da4b48-1 branch restriction; F-d8da4b48-2 sandbox MLB API unreachable; F-d8da4b48-3 parallel-session merge conflicts resolved without discarding work.
+---
+
+## Final deployment record — session `9572372b` (2026-11-25T21:08Z, appended post-merge)
+
+- **PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) — MERGED** at 2026-11-25T21:08:53Z as
+  merge commit [`0c8d9279125434beb4566eaba8b2afa3c244ec8a`](https://github.com/kanlerxz87-cyber/Alert4/commit/0c8d9279125434beb4566eaba8b2afa3c244ec8a)
+  (both PR checks green before merge: `test`, `dom-smoke` — [run 45701488924](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701488924)).
+- **GitHub Pages:** [build](https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest) at `0c8d927` →
+  **`status: built`** (created 2026-11-25T21:08:55Z, updated 21:09:20Z, branch `main`, `/`, https enforced).
+  Post-merge runs all **success**: [Site checks (push) 45701624459](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701624459),
+  [pages build and deployment 45701624907](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701624907),
+  [Published Pages delivery 45701716205](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701716205).
+- **Live site verified through the fetch channel:** [flagged.html](https://kanlerxz87-cyber.github.io/Alert4/flagged.html)
+  serves the union report (intro: five sessions; §§1–14 upstream verbatim; §15 COPY-1…8; §16 A4-1…11;
+  §17 C-1…C-5); [home page](https://kanlerxz87-cyber.github.io/Alert4/) renders the documented offseason
+  empty state ("No games scheduled for Wed Nov 25, 2026.
+Most recent date with games: Wed Oct 28, 2026"),
+  and [reviews.html?date=2026-08-26](https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26)
+  is the reference-feed deep link for an actual game day. The site needs no code change for upcoming game
+  days (spring training opens 2027-02-19; regular season 2027-03-25 — see A4-6 in §16).
+- **What is live is the union of all five sessions' work**, merged without discarding any session's
+  contribution: PRs #1 (fd8d4cdb), #3 (076871a5), #4 + #7 (arena-f17e9b8e), #5 (arena/d8da4b48),
+  #6 (fd8d4cdb post-merge record) and #2 (9572372b) are all merged; the open fourth copy PR mentioned
+  in earlier records was #5, which was merged as `124bfea`.
+- Upstream `snapquast73-boop/LIVPBP` @ `5c02527d3c7a56ea66c698cfabff80a407b6dfd3` remains the source of
+  truth for data values; every flagged/unverified item stays published on the Flagged for Review page
+  with its source links (§§1–17). Unverified items are non-blocking and none were silently corrected.
+- Post-merge record itself delivered as a follow-up PR from `arena/9572372b-alert4` (linked in the PR list).

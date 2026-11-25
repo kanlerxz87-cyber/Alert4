@@ -6,14 +6,21 @@
 > the revision published on [GitHub Pages](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26)
 > at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
 > All 40 tracked upstream files were initially verified by SHA-256 with zero mismatches; no
-> site data or verification value was edited. Two later, repo-local adaptations are preserved:
-> session `076871a5` retargeted `404.html`'s base path, `package.json`'s homepage and the two
-> test-harness URLs to `/Alert4/`, and session `fd8d4cdb` added a Pages-delivery CI guard.
+> site data or verification value was edited. Three parallel sessions imported the same commit
+> on 2026-11-25 and their work was merged without discarding any of it (see
+> [`COORDINATION.md`](COORDINATION.md)): session `076871a5` retargeted `404.html`'s base path,
+> `package.json`'s homepage and the two test-harness URLs to `/Alert4/`; session `fd8d4cdb`
+> added a Pages-delivery CI guard; session `arena-f17e9b8e` re-verified every API contract
+> against the official MLB StatsAPI (18 linked rows, including all three reference review rows
+> and the upcoming 2027 game days) and archived the upstream board at
+> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)).
 > Copy checks, the official MLB StatsAPI spot-checks and every source link are in
-> [`docs/copy-verification.md`](docs/copy-verification.md).
+> [`docs/copy-verification.md`](docs/copy-verification.md) and
+> [`docs/verification-report-alert4.md`](docs/verification-report-alert4.md).
 > Copy-specific deviations are published on the
 > [**⚑ Flagged for Review**](flagged.html#15-copy-into-alert4-session-arena-fd8d4cdb-alert4-2026-11-25)
-> page (section 15); the upstream site's own flags remain in sections 1–14. External links to
+> page (sections 15–16); the upstream site's own flags remain in sections 1–14. External links to
 > the upstream repository are provenance links for manual review, not internal navigation.
 
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️

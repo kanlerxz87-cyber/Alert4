@@ -376,8 +376,21 @@ history is by design). Non-blocking.
 - **Other sessions:** PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) (session
   `9572372b`) remains **open** and untouched — its owner integrates it. PRs #1, #3, #5, #6 are
   merged; all their work is preserved in `main`.
-- **Follow-up record PR:** this integration record itself is delivered via a follow-up PR from
-  this branch (linked here once opened).
+- **Follow-up record PR [#7](https://github.com/kanlerxz87-cyber/Alert4/pull/7) — MERGED** at
+  2026-11-25T21:06:14Z, merge commit
+  [`96ceab8`](https://github.com/kanlerxz87-cyber/Alert4/commit/96ceab88a13d8eb86c20b8d18e25b494461f15e5).
+  Checks green before merge ([run 45701081021](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701081021)).
+  Pages rebuilt at `96ceab8` → `status: built`; post-deploy
+  [Site checks 45701217511](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701217511) and
+  [Published Pages delivery 45701317988](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701317988)
+  both **success**. Live `flagged.html` confirmed serving §§1–16 incl. A4-11.
+- **Final record PR:** [#8](https://github.com/kanlerxz87-cyber/Alert4/pull/8) carries this
+  close-out record itself (docs-only).
+- **Session close-out:** all tasks A1–A7 done. Site live at
+  https://kanlerxz87-cyber.github.io/Alert4/ — behaviorally identical to the reference
+  (same code commit), working for upcoming game days (2027 schedule verified). Open items for
+  the owner: the flagged/unverified rows on `flagged.html` (incl. A4-11 restore request) and
+  PR #2, which belongs to session `9572372b`.
 
 Integration result recorded during `9572372b`'s merge of `65387ae` into this branch (2026-11-25): this branch then merged `65387ae` and retained the detailed record that session published as PR #7.
 

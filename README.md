@@ -20,7 +20,7 @@
 > `node tests/jsdom-render-test.mjs` (field map: `docs/statsapi-field-map.md`). Known deviations from this README's description of the
 > original (refresh cadence, the reduced hit-forecast drivers, the simplified review score tracker,
 > and every unverified item) are published on the
-> **[⚑ Flagged for Review](https://kanlerxz87-cyber.github.io/Alert4/flagged.html)** page, with source
+> **[⚑ Flagged for Review](flagged.html)** page, with source
 > links. The text below is the original project documentation, unchanged apart from this note, the
 > demo link, the file-tree entries that now exist, and the test commands in "Run it locally".
 
@@ -172,7 +172,8 @@ mlb.com uses, re-implemented from scratch in vanilla HTML/CSS/JS.
 - No build step, no frameworks, no API keys — it runs on **GitHub Pages** (or any static
   host, or even `file://`).
 
-> **Live demo:** [snapquast73-boop.github.io/LIVPBP](https://kanlerxz87-cyber.github.io/Alert4/)
+> **Live demo (this copy):** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)  
+> **Upstream reference:** [snapquast73-boop.github.io/LIVPBP](https://snapquast73-boop.github.io/LIVPBP/)
 > (Restored 2026-11-20: the original author's repo linked here previously is
 > no longer on GitHub — see `flagged.html` items F-002/F-008 and
 > `COORDINATION.md` for the restoration log and flagged irregularities.)

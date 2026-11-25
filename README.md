@@ -1,19 +1,28 @@
 # ⚾ MLB Live PBP — Live MLB Scoreboard & Play-by-Play
 
 > ### 📋 **COPY NOTE (2026-11-25)** 📋
-> This repository (`kanlerxz87-cyber/Alert4`) is a working copy of
-> [`snapquast73-boop/LIVPBP`](https://github.com/snapquast73-boop/LIVPBP) at commit
-> [`5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3)
-> ("Merge pull request #33"), made so the site can be iterated on independently.
-> Two parallel sessions imported the same commit on 2026-11-25 (`076871a5`, PR #3;
-> `arena-f17e9b8e`, PR #4) and their work was merged without discarding either — see
-> [`COORDINATION.md`](COORDINATION.md). The import was verbatim (byte-for-byte, verified
-> with `diff -r`); the only changes are repo-specific paths and links (`404.html` base path
-> `/LIVPBP/` → `/Alert4/`, `package.json` homepage, demo links, test URLs). The source repo's
-> task board is archived at [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md).
-> All prior verification records and flagged items are preserved on the
-> [Flagged for Review](flagged.html) page; this copy's re-verification is in
+> This repository is a byte-for-byte copy of the working reference site
+> [`snapquast73-boop/LIVPBP` @ `5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3),
+> the revision published on [GitHub Pages](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26)
+> at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
+> All 40 tracked upstream files were initially verified by SHA-256 with zero mismatches; no
+> site data or verification value was edited. Three parallel sessions imported the same commit
+> on 2026-11-25 and their work was merged without discarding any of it (see
+> [`COORDINATION.md`](COORDINATION.md)): session `076871a5` retargeted `404.html`'s base path,
+> `package.json`'s homepage and the two test-harness URLs to `/Alert4/`; session `fd8d4cdb`
+> added a Pages-delivery CI guard; session `arena-f17e9b8e` re-verified every API contract
+> against the official MLB StatsAPI (18 linked rows, including all three reference review rows
+> and the upcoming 2027 game days) and archived the upstream board at
+> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)).
+> Copy checks, the official MLB StatsAPI spot-checks and every source link are in
+> [`docs/copy-verification.md`](docs/copy-verification.md) and
 > [`docs/verification-report-alert4.md`](docs/verification-report-alert4.md).
+> Copy-specific deviations are published on the
+> [**⚑ Flagged for Review**](flagged.html#15-copy-into-alert4-session-arena-fd8d4cdb-alert4-2026-11-25)
+> page (sections 15–16); the upstream site's own flags remain in sections 1–14. External links to
+> the upstream repository are provenance links for manual review, not internal navigation.
+
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️
 > This repository was uploaded incomplete: the three HTML pages referenced a stylesheet and nine
 > scripts under `assets/` that were **not** part of the upload, so GitHub Pages served an unstyled,
@@ -178,13 +187,11 @@ mlb.com uses, re-implemented from scratch in vanilla HTML/CSS/JS.
 - No build step, no frameworks, no API keys — it runs on **GitHub Pages** (or any static
   host, or even `file://`).
 
-> **Live demo (this copy):** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)
+> **Live demo (this copy):** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)  
 > **Upstream reference:** [snapquast73-boop.github.io/LIVPBP](https://snapquast73-boop.github.io/LIVPBP/)
-> (Restored 2026-11-20 in the source repo: the original author's repo linked here previously is
-> no longer on GitHub — see `flagged.html` items F-002/F-008,
-> [`COORDINATION.md`](COORDINATION.md) and
-> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) for the restoration
-> log and flagged irregularities.)
+> (Restored 2026-11-20: the original author's repo linked here previously is
+> no longer on GitHub — see `flagged.html` items F-002/F-008 and
+> `COORDINATION.md` for the restoration log and flagged irregularities.)
 
 ---
 

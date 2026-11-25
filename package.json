@@ -1,0 +1,16 @@
+{
+  "name": "alert4-mlb-live-pbp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Alert4 \u2014 MLB Live PBP live scoreboard, play-by-play and replay-review feed (static site, GitHub Pages). Copied from snapquast73-boop/LIVPBP.",
+  "homepage": "https://kanlerxz87-cyber.github.io/Alert4/",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "node tools/smoke-test.mjs",
+    "serve": "node server.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
+  }
+}

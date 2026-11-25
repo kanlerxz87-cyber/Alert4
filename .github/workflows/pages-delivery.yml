@@ -36,6 +36,22 @@ jobs:
           ref: ${{ steps.pages.outputs.sha }}
           path: deployed
           persist-credentials: false
+      # A pull request that adds this checker can run before the site itself has
+      # been deployed (the currently published revision may predate index.html).
+      # There is nothing to compare in that case; the check runs on the next
+      # successful Pages build, after the site has been published.
+      - name: Check that the deployed revision contains the site
+        id: deployed
+        env:
+          SHA: ${{ steps.pages.outputs.sha }}
+        run: |
+          if [[ ! -f deployed/index.html ]]; then
+            echo "Published revision $SHA has no index.html; skipping delivery comparison until the site is deployed."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
       - run: node tests/pages-delivery.mjs deployed "$SITE"
+        if: steps.deployed.outputs.skip != 'true'
         env:
           SITE: ${{ steps.pages.outputs.site }}

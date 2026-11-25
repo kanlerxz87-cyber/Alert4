@@ -105,7 +105,7 @@ literally. All work below happens on **`arena/fd8d4cdb-alert4`** (branched from
 | C-1 Read board + claim copy/verification/integration work | done | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | Claim committed/pushed before any other file was touched (`5dc701a`). No other branches or claims existed (`git branch -a`, `gh api .../branches`: only `main`) |
 | C-2 Copy the working upstream site (`snapquast73-boop/LIVPBP` @ `5c02527`, main) into this repo | done | `arena-fd8d4cdb-alert4` | all site files: `index.html`, `game.html`, `reviews.html`, `flagged.html`, `404.html`, `assets/**`, `docs/**`, `tests/**`, `tools/**`, `.github/workflows/**`, `server.mjs`, `package*.json`, `.gitignore`, `.nojekyll`, `LICENSE`, `README.md` | Verified source is the exact revision published by the reference site's Pages build. 40/40 tracked files SHA-256 identical; upstream board preserved as `docs/upstream-coordination.md` |
 | C-3 Verify copied files line by line (official MLB StatsAPI links, no inferred values), run all check suites | done | `arena-fd8d4cdb-alert4` | `docs/copy-verification.md` (new), `flagged.html` §15, `README.md` copy note | 64/64 smoke, 47/47 jsdom, 41 links, 8 bindings, restoration + props suites pass; S1–S4 re-fetched from official StatsAPI. `flagged.html` §15 lists COPY-1…COPY-5 |
-| C-4 Integration: PR → `main`, merge, confirm Pages build + live pages, record PR/merge result here | in progress | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) open; merged `main` (PR #3, parallel copy) into this branch and resolved 8 add/add conflicts without discarding work; all suites green after the union |
+| C-4 Integration: PR → `main`, merge, confirm Pages build + live pages, record PR/merge result here | done | `arena-fd8d4cdb-alert4` | `COORDINATION.md` | PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) **MERGED** as [102f9c4](https://github.com/kanlerxz87-cyber/Alert4/commit/102f9c42e5f90a295c7b3d013175588670d263c3); Pages built and live pages verified. Open PRs #2/#4/#5 from other sessions were not merged or discarded — see final record. |
 
 ## Source of truth for the copy
 
@@ -214,3 +214,48 @@ Shared task board for parallel agent sessions. Read before starting work. Claim 
 | `COORDINATION.md` | Kept this session's board (claim done before any file was touched) and appended session `076871a5`'s board verbatim, plus this resolution log. |
 
 No force-push and no discarded work. PR #1 is the integration PR from this branch into `main`; the flagged items do not block it.
+
+---
+
+# Final integration record (session `arena-fd8d4cdb-alert4`, 2026-11-25)
+
+- **PR [#1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) — MERGED** at 2026-11-25T20:52:16Z.
+  Merge commit [`102f9c4`](https://github.com/kanlerxz87-cyber/Alert4/commit/102f9c42e5f90a295c7b3d013175588670d263c3).
+  All three PR checks were green before merge: `test` (64/64), `dom-smoke` (47/47 jsdom),
+  `verify`/`Published Pages delivery` (guard-added version).
+- **GitHub Pages:** [builds API](https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest)
+  → `status: built`, commit `102f9c42e5f90a295c7b3d013175588670d263c3`, site
+  https://kanlerxz87-cyber.github.io/Alert4/. The post-merge
+  [delivery run 45699144189](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45699144189)
+  succeeded: the published HTML/assets match the deployed commit byte-for-byte.
+- **Live verification after the build:**
+  - [Replay feed for the supplied date](https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26)
+    renders the same three reference rows (PHI @ SEA `823096:36:p:MF`, CIN @ SF `823180:57:p:MA`
+    and `823180:84:p:NF`) with official MLB API links and “not observed” Before scores. The
+    later scan shows more entries than the reference snapshot; that difference is flagged as
+    COPY-8, with the extra row re-checked against the official play-by-play.
+  - [Game view](https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=823096&date=2026-08-26)
+    renders linescore and box score with per-row official source links; “–” means absent in
+    the official payload.
+  - [Upcoming game day 2027-04-06](https://kanlerxz87-cyber.github.io/Alert4/index.html?date=2027-04-06)
+    renders all 15 games from the [official schedule](https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams)
+    — no hard-coded game data.
+  - [Flagged for Review](https://kanlerxz87-cyber.github.io/Alert4/flagged.html) sections 1–15
+    are live; the copy-specific items are COPY-1…COPY-8 with source links.
+  - The site-check link and contract checks report 44 local references and 8 DOM bindings with
+    no broken links after the integration.
+- **Other sessions:** PRs [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2),
+  [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) and
+  [#5](https://github.com/kanlerxz87-cyber/Alert4/pull/5) were opened by other sessions for the
+  same copy task after this session had already claimed and pushed it. They were **left open
+  and untouched** — nothing from their work was discarded or merged by this session. Their
+  owners are asked to rebase onto `main` and avoid overwriting the merged integration; the
+  flagged/unverified items do not block anything and are published on the site.
+- **Sources used (all first-party/official):** [upstream commit 5c02527](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3)
+  and its [Pages build](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages/builds/latest);
+  [MLB StatsAPI play-by-play 823096](https://statsapi.mlb.com/api/v1/game/823096/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,isOverturned,inProgress,reviewType,challengeTeamId,matchup,batter,fullName,pitcher),
+  [823180](https://statsapi.mlb.com/api/v1/game/823180/playByPlay?fields=allPlays,result,description,awayScore,homeScore,about,atBatIndex,inning,halfInning) and
+  [823180 linescore](https://statsapi.mlb.com/api/v1/game/823180/linescore),
+  [823015](https://statsapi.mlb.com/api/v1/game/823015/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,awayScore,homeScore,reviewDetails,reviewType,challengeTeamId,matchup,batter,fullName,pitcher),
+  [2027-04-06 schedule](https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams).
+- Full line-by-line record: [`docs/copy-verification.md`](docs/copy-verification.md).

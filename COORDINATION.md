@@ -288,6 +288,8 @@ history is by design). Non-blocking.
   [Site checks 45701217511](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701217511) and
   [Published Pages delivery 45701317988](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45701317988)
   both **success**. Live `flagged.html` confirmed serving §§1–16 incl. A4-11.
+- **Final record PR:** [#8](https://github.com/kanlerxz87-cyber/Alert4/pull/8) carries this
+  close-out record itself (docs-only).
 - **Session close-out:** all tasks A1–A7 done. Site live at
   https://kanlerxz87-cyber.github.io/Alert4/ — behaviorally identical to the reference
   (same code commit), working for upcoming game days (2027 schedule verified). Open items for

@@ -23,6 +23,17 @@
     <div class="flagged-intro">
       <h1 style="margin-top:0">Flagged for Review</h1>
       <p>
+        <strong>This site is the Alert4 copy.</strong> <code>kanlerxz87-cyber/Alert4</code> is a
+        byte-for-byte copy of <a href="https://github.com/snapquast73-boop/LIVPBP" target="_blank" rel="noopener">snapquast73-boop/LIVPBP</a>
+        at commit <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">5c02527</a>
+        (the exact commit the reference site is built from), made 2026-11-25 so the site can be
+        iterated on independently. Sections 1–14 below are the source repo's verification records,
+        preserved verbatim; their links to the source repo remain valid evidence.
+        <a href="#section-15">Section 15</a> records this copy session's own re-verification
+        (every endpoint re-read from the official MLB StatsAPI on 2026-11-25) and the items it
+        carries forward. Full report: <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>.
+      </p>
+      <p>
         This page lists every claim made about this rebuild together with the
         <strong>official source</strong> it was checked against, and every value or behaviour that
         could <strong>not</strong> be confirmed. Nothing on this page is inferred: where an official
@@ -970,6 +981,91 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       RR-05 is answered by R2-3.
     </p>
 
+    <h2 id="section-15">15. Alert4 copy — re-verification &amp; carried flags (session <code>arena-f17e9b8e</code>, 2026-11-25)</h2>
+    <p style="color:var(--muted);font-size:13px">
+      The copy was verified byte-for-byte against the source commit the reference site is built
+      from (<a href="https://api.github.com/repos/snapquast73-boop/LIVPBP/pages/builds" target="_blank" rel="noopener">Pages builds API</a> →
+      newest built commit <code>5c02527</code>; <code>diff -r</code> → no differences). Every API
+      contract the client uses was then re-read from the official StatsAPI on 2026-11-25 through
+      the page-fetch channel (direct sockets to <code>statsapi.mlb.com</code> are blocked in this
+      sandbox, as in the source sessions). Full table with exact requests:
+      <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Claim re-verified</th><th>Official source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>A4-1</td>
+          <td class="wrap">Reference date slate: 15 games on 2026-08-26; PHI@SEA <code>823096</code> Final 6–0, CIN@SF <code>823180</code> Final 10–9 — matches the reference page.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2026-08-26&amp;fields=dates,date,totalGames,games,gamePk,gameDate,officialDate,status,detailedState,teams,away,home,team,name,score" target="_blank" rel="noopener">schedule?date=2026-08-26</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference page</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-2</td>
+          <td class="wrap">All three review rows shown on the reference page exist verbatim in the official play-by-play: <code>823096:36</code> MF stands (Crawford vs Luzardo, Bot 5), <code>823180:57</code> MA stands (Stewart vs Walker, Top 7), <code>823180:84</code> NF stands (Rodríguez vs Sanmartin, Top 9) — same descriptions, batters, pitchers, innings, outcomes.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/823096/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,eventType,reviewDetails,reviewType,isOverturned,inProgress,player,fullName,matchup,batter,pitcher,hasReview" target="_blank" rel="noopener">823096 playByPlay</a> · <a href="https://statsapi.mlb.com/api/v1/game/823180/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,eventType,reviewDetails,reviewType,isOverturned,inProgress,matchup,batter,pitcher,fullName,hasReview" target="_blank" rel="noopener">823180 playByPlay</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-3</td>
+          <td class="wrap">Challenge counters match the reference rows: <code>823180</code> <code>review.home{used:1,remaining:0}</code> ("SF: 0 manager challenges left now (1 used)"); <code>absChallenges</code> away remaining 2 / home remaining 1 ("CIN 1 MGR · 2 ABS — SF 0 MGR · 1 ABS"). Schedule <code>hydrate=review</code> carries the same counters.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1.1/game/823180/feed/live?fields=gameData,game,pk,status,detailedState,statusCode,review,absChallenges,away,home,used,remaining,usedSuccessful,usedFailed,hasChallenges" target="_blank" rel="noopener">823180 feed/live counters</a> · <a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2026-08-26&amp;hydrate=review&amp;fields=dates,games,gamePk,review,hasChallenges,away,home,used,remaining" target="_blank" rel="noopener">schedule hydrate=review</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-4</td>
+          <td class="wrap">Review-type registry (<code>MF/MA/NF/NH/MJ/NJ/IH</code> wording and families) and official-scorer pending-ruling event types (<code>os_ruling_pending_primary/prior</code>, "Official Scorer Ruling Pending") match the client's classification tables.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/gameStatus" target="_blank" rel="noopener">/api/v1/gameStatus</a> · <a href="https://statsapi.mlb.com/api/v1/eventTypes" target="_blank" rel="noopener">/api/v1/eventTypes</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-5</td>
+          <td class="wrap">Linescore, boxscore, season/expected stats, vsPlayer and team-abbreviation endpoints return the shapes the client reads (all 30 abbreviations incl. ATH/CWS/AZ match <code>UI.TEAM_ABBR</code>).</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/823096/linescore" target="_blank" rel="noopener">linescore</a> · <a href="https://statsapi.mlb.com/api/v1/game/823096/boxscore" target="_blank" rel="noopener">boxscore</a> · <a href="https://statsapi.mlb.com/api/v1/people/663728/stats?stats=season,expectedStatistics&amp;group=hitting&amp;season=2026" target="_blank" rel="noopener">people stats</a> · <a href="https://statsapi.mlb.com/api/v1/people/682829/stats?stats=vsPlayer&amp;group=hitting&amp;opposingPlayerId=656849" target="_blank" rel="noopener">vsPlayer</a> · <a href="https://statsapi.mlb.com/api/v1/teams?sportId=1" target="_blank" rel="noopener">teams</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-6</td>
+          <td class="wrap">Upcoming game days: the official 2027 schedule is published — spring training opens 2027-02-19 (17 games, all Preview/Scheduled), regular season opens 2027-03-25 (14 games). Today (2026-11-25) is an empty offseason slate; the site's documented empty-state/offseason-hint path applies. No code change is needed for upcoming game days.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;startDate=2027-02-01&amp;endDate=2027-04-15&amp;fields=dates,date,totalGames" target="_blank" rel="noopener">2027 schedule range</a> · <a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2027-02-19&amp;hydrate=probablePitcher" target="_blank" rel="noopener">2027-02-19 slate</a> · <a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2026-11-25&amp;fields=dates,date,totalGames" target="_blank" rel="noopener">today's slate</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-7</td>
+          <td class="wrap">Full test harness re-run on the copied tree: restoration-check ALL PASSED · smoke-test 64/64 · run-all (syntax, 41 local refs, 8 bindings, jsdom 47/47) · props-provenance 5/5 · local server smoke (all pages 200, feed-log round-trip OK).</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/blob/main/tools/smoke-test.mjs" target="_blank" rel="noopener">tools/smoke-test.mjs</a> · <a href="https://github.com/kanlerxz87-cyber/Alert4/blob/main/tests/run-all.mjs" target="_blank" rel="noopener">tests/run-all.mjs</a> · <a href="docs/verification-report-alert4.md">report §3</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+        <tr>
+          <td>A4-8</td>
+          <td class="wrap"><strong>Carried flag (U-8 / T-9):</strong> logo/headshot CDN URLs (<code>www.mlbstatic.com</code>, <code>img.mlbstatic.com</code>) return HTTP 500 to the page-fetch channel (binary/SVG), so they could not be re-verified from this environment. URLs are unchanged from the working reference site; the UI falls back to initials badges on image failure. Not corrected, not guessed.</td>
+          <td class="wrap"><a href="https://www.mlbstatic.com/team-logos/team-cap-on-dark/136.svg" target="_blank" rel="noopener">logo URL</a> · <a href="https://img.mlbstatic.com/mlb-photos/image/upload/d_people:generic:headshot:67:current.png/w_120,q_auto:best/v1/people/663728/headshot/67/current" target="_blank" rel="noopener">headshot URL</a> · <a href="https://www.reddit.com/r/mlbdata/comments/1b1eit0/team_logos/" target="_blank" rel="noopener">community documentation of the pattern</a> · <a href="https://www.mlb.com/glossary/rules/replay-review" target="_blank" rel="noopener">mlb.com itself serves its share image from www.mlbstatic.com/team-logos/</a> (official host confirmation; the exact per-team/per-player files remain unverified from this sandbox)</td>
+          <td class="status-unverified">Unverified (carried)</td>
+        </tr>
+        <tr>
+          <td>A4-9</td>
+          <td class="wrap"><strong>Observation:</strong> two games on 2026-08-26 (<code>824555</code>, <code>824963</code>) return official <code>review.home{used:1,remaining:1}</code>. The client reads counters as-is by design (a successful challenge is retained under MLB replay rules); no derivation or correction is applied. Recorded for review, not a site defect.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/schedule?sportId=1&amp;date=2026-08-26&amp;hydrate=review&amp;fields=dates,games,gamePk,review,hasChallenges,away,home,used,remaining" target="_blank" rel="noopener">schedule hydrate=review</a> · <a href="https://www.mlb.com/glossary/rules/replay-review" target="_blank" rel="noopener">MLB replay-review rule glossary</a></td>
+          <td class="status-ok">Verified (as-is)</td>
+        </tr>
+        <tr>
+          <td>A4-10</td>
+          <td class="wrap"><strong>Expected behavior, not data loss:</strong> the reference page's "76 tracked entries · local log only" includes entries observed live in that browser's localStorage (scoring changes, pending rulings, before-review scores). A fresh browser on this copy rebuilds the feed from the official API for the date; before-review scores show "not observed" exactly as the reference does for post-resolution visits. This is the documented persistence design.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/blob/main/assets/js/feed-log.js" target="_blank" rel="noopener">assets/js/feed-log.js</a> · <a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference footer ("local log only")</a></td>
+          <td class="status-ok">Verified</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      All inherited items (U-1…U-11, I-8, F-001…F-009, L-1…L-4, RR-01…RR-06, D-1…D-4, AF-1…AF-7,
+      R2-1…R2-11) keep their status in sections 1–14 above; their evidence links point at the
+      source repo, which remains online. This session changed no site behavior — only repo-path
+      adaptations (<code>404.html</code> base path, homepage/demo links, test URLs) — so every
+      functional finding in the inherited sections applies to this copy unchanged.
+    </p>
+
   </main>
 
   <footer class="site-footer">
@@ -978,6 +1074,7 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       (<a href="https://statsapi.mlb.com" target="_blank" rel="noopener">statsapi.mlb.com</a>).
       Not affiliated with MLB or MLB Advanced Media.
       Verification log: <a href="docs/verification-report.md">docs/verification-report.md</a> ·
+      <a href="docs/verification-report-alert4.md">Alert4 copy report</a> ·
       coordination: <a href="COORDINATION.md">COORDINATION.md</a>.
     </p>
   </footer>

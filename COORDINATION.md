@@ -143,7 +143,18 @@ discarded from either session):
 
 Auto-merged without conflict (identical adaptations on both sides): `404.html`,
 `tests/jsdom-render-test.mjs`, `tests/props-provenance-test.mjs`, and all site assets.
-Post-merge: full harness re-run on the combined tree (results in the integration log).
+Post-merge: full harness re-run on the combined tree — site code verified identical to
+source `5c02527` by `diff -r`; run-all 4/4 PASS, restoration-check ALL PASSED, smoke 64/64,
+props-provenance 5/5.
+
+**Rebase incident (same day, resolved, no work lost):** the protocol's `git pull --rebase`
+before push attempted to *flatten* the merge commit and replay session `076871a5`'s commits
+(`1ed4742`, `0f57e52`) on top of this branch, stopping on a COORDINATION.md conflict. The
+push had already delivered the correct merge commit `974c0fc` to the remote branch, so the
+rebase was aborted (`git rebase --abort`), restoring local HEAD to `974c0fc` — identical to
+the remote. Nothing from either session was discarded. Lesson logged for future sessions:
+when a branch contains a merge of `main`, use `git fetch` + fast-forward check (or
+`git pull --rebase=merges`) instead of a plain `git pull --rebase`.
 
 ## Integration log (session `arena-f17e9b8e`)
 

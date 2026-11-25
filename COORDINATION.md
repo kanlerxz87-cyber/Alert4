@@ -42,10 +42,11 @@ literally. All work below happens on **`arena/fd8d4cdb-alert4`** (branched from
 | 2026-11-25 | Upcoming game days are available from the official schedule (2027-04-06: 15 games) | https://statsapi.mlb.com/api/v1/schedule?sportId=1&date=2027-04-06&fields=dates,games,gamePk,gameDate,status,teams | Confirmed |
 | 2026-11-25 | Static link/contract/render/smoke/props/server suites on the copied tree | `node tests/run-all.mjs`, `npm test`, `node tools/restoration-check.mjs`, `node tests/props-provenance-test.mjs` | All pass: 41 links, 8 bindings, 47/47 jsdom, 64/64 smoke, restoration ALL PASSED, props 5/5 |
 | 2026-11-25 | Optional live-API render mode from this sandbox | `node tests/jsdom-render-test.mjs --live` | **Inconclusive**: shell egress to statsapi.mlb.com blocked (SSL error) and 13 assertions expect the 2026-08-28 slate; official endpoints were fetched separately. Published as COPY-4 |
+| 2026-11-25 | PR #1 site checks | [PR #1](https://github.com/kanlerxz87-cyber/Alert4/pull/1) · [Actions run](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922419) | `dom-smoke` and `test` pass. First `Published Pages delivery` run ([job log](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879)) failed on `ENOENT: deployed/index.html` because Pages was still publishing the pre-copy commit `a24f7e1`. Guard added (COPY-6); check reruns below. |
 
 Irregularities recorded for review: `COPY-1` (branch constraint), `COPY-2` (upstream reconstruction),
 `COPY-3` (upstream provenance links), `COPY-4` (sandbox live-test limitation), `COPY-5` (no
-values changed — confirmed). All are published with source links in
+values changed — confirmed), `COPY-6` (stale-Pages delivery check; guard added). All are published with source links in
 [`docs/copy-verification.md`](docs/copy-verification.md) and [`flagged.html`](flagged.html) §15.
 The upstream board and its 14 sections of flags are preserved unchanged in
 [`docs/upstream-coordination.md`](docs/upstream-coordination.md) and `flagged.html` §§1–14.

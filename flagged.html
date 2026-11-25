@@ -1024,6 +1024,14 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
           <td class="wrap"><a href="https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26" target="_blank" rel="noopener">reference feed</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3" target="_blank" rel="noopener">copied commit</a></td>
           <td class="status-ok">Confirmed</td>
         </tr>
+        <tr>
+          <td>COPY-6</td>
+          <td class="wrap">The first PR run of the <code>Published Pages delivery</code> check failed with <code>ENOENT: deployed/index.html</code>.</td>
+          <td class="wrap">At that moment the published revision was the pre-copy <code>main</code> commit <code>a24f7e1</code>, which contains no site; the comparison had nothing to compare. The two actual site checks passed.</td>
+          <td class="wrap">The workflow now skips only a published revision without <code>index.html</code> and still performs the byte-for-byte comparison on the first real Pages build after merge. This workflow is the only upstream file intentionally changed in this copy.</td>
+          <td class="wrap"><a href="https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45697922416/job/139500101879" target="_blank" rel="noopener">failed job log</a> · <a href="https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest" target="_blank" rel="noopener">Pages builds</a> · <a href="https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/tests/pages-delivery.mjs" target="_blank" rel="noopener">delivery test</a></td>
+          <td class="status-ok">Fixed — guard added</td>
+        </tr>
       </tbody>
     </table>
     <p style="color:var(--muted);font-size:13px">

@@ -1,5 +1,17 @@
 # ⚾ MLB Live PBP — Live MLB Scoreboard & Play-by-Play
 
+> ### 📋 **COPY NOTE (2026-11-25)** 📋
+> This repository (`kanlerxz87-cyber/Alert4`) is a working copy of
+> [`snapquast73-boop/LIVPBP`](https://github.com/snapquast73-boop/LIVPBP) at commit
+> [`5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3)
+> ("Merge pull request #33"), made so the site can be iterated on independently.
+> The import was verbatim (byte-for-byte, verified with `diff -r`); the only changes are
+> repo-specific paths and links (`404.html` base path `/LIVPBP/` → `/Alert4/`, `package.json`
+> homepage, demo links, test URLs). The source repo's task board is archived at
+> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md); this repo's board is
+> [`COORDINATION.md`](COORDINATION.md). All prior verification records and flagged items are
+> preserved on the [Flagged for Review](flagged.html) page.
+
 > ### ♻️ **RESTORATION NOTE (2026-11-20)** ♻️
 > This repository was uploaded incomplete: the three HTML pages referenced a stylesheet and nine
 > scripts under `assets/` that were **not** part of the upload, so GitHub Pages served an unstyled,
@@ -12,7 +24,7 @@
 > `node tests/jsdom-render-test.mjs` (field map: `docs/statsapi-field-map.md`). Known deviations from this README's description of the
 > original (refresh cadence, the reduced hit-forecast drivers, the simplified review score tracker,
 > and every unverified item) are published on the
-> **[⚑ Flagged for Review](https://snapquast73-boop.github.io/LIVPBP/flagged.html)** page, with source
+> **[⚑ Flagged for Review](https://kanlerxz87-cyber.github.io/Alert4/flagged.html)** page, with source
 > links. The text below is the original project documentation, unchanged apart from this note, the
 > demo link, the file-tree entries that now exist, and the test commands in "Run it locally".
 
@@ -164,10 +176,11 @@ mlb.com uses, re-implemented from scratch in vanilla HTML/CSS/JS.
 - No build step, no frameworks, no API keys — it runs on **GitHub Pages** (or any static
   host, or even `file://`).
 
-> **Live demo:** [snapquast73-boop.github.io/LIVPBP](https://snapquast73-boop.github.io/LIVPBP/)
-> (Restored 2026-11-20: the original author's repo linked here previously is
+> **Live demo (this copy):** [kanlerxz87-cyber.github.io/Alert4](https://kanlerxz87-cyber.github.io/Alert4/)
+> **Reference site copied:** [snapquast73-boop.github.io/LIVPBP](https://snapquast73-boop.github.io/LIVPBP/)
+> (Restored 2026-11-20 in the source repo: the original author's repo linked here previously is
 > no longer on GitHub — see `flagged.html` items F-002/F-008 and
-> `COORDINATION.md` for the restoration log and flagged irregularities.)
+> `audit/source-repo-COORDINATION.md` for the restoration log and flagged irregularities.)
 
 ---
 

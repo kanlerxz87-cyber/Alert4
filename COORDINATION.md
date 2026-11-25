@@ -234,6 +234,12 @@ history is by design). Non-blocking.
    kept (`docs/upstream-coordination.md` and `audit/source-repo-COORDINATION.md` are the same
    content; neither discarded).
 
+4. **Merge 3** — `origin/main` @ `2a4d504` (PR #6, session `fd8d4cdb`'s final integration
+   record: PR #1 merged, Pages built at `102f9c4`, delivery check + live verification green).
+   One conflict (COORDINATION.md, both sessions appending at file end): kept their final
+   integration record verbatim, this board appended after it. `flagged.html` auto-merged
+   (their COPY-8 addition + this session's §16). Site code untouched by all three merges.
+
 ## Integration log (session `arena-f17e9b8e`)
 
 - PR: https://github.com/kanlerxz87-cyber/Alert4/pull/4 (branch `arena/f17e9b8e-alert4` → `main`)

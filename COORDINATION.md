@@ -32,6 +32,8 @@ active for this repo) is preserved byte-for-byte at
 >
 > **Merge 5 — `9572372b` merges `origin/main` (PR #5, `124bfea` — `arena/d8da4b48`'s identity/link adaptations) into `arena/9572372b-alert4`** (conflicts: `COORDINATION.md`, `tests/README.md`; `README.md`, `flagged.html`, `tests/README.md` auto-merged): kept this branch's Alert4-internal blob URLs in `tests/README.md` (provenance for this repo); unioned `COORDINATION.md` at the append point (kept this branch's PR-#4 integration-result paragraph and added `d8da4b48`'s addendum verbatim); README gained the five-session COPY NOTE and `flagged.html`'s intro and parallel-sessions record now name all five merged sessions and no open fourth PR (both #4 and #5 merged). `d8da4b48` renamed `package.json` to `alert4-mlb-live-pbp` — that adaptation kept as-is; `docs/verification-report.md` and `audit/*` deployed-URL links were re-pointed to the Alert4 Pages URL by that session and are unchanged here. Verified on the merged tree before committing: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed, 0 failed** · `node tests/run-all.mjs` PASS (syntax, link-check **57 local references OK**, contract-check 8 bindings, jsdom render 47/47) · `node tests/props-provenance-test.mjs` **5 passed** · `flagged.html` structural tags balanced.
 >
+> **Merge 6 — `9572372b` merges `origin/main` (PR #7, `96ceab8` — `arena-f17e9b8e`'s post-deploy record) into `arena/9572372b-alert4`** (conflict: `COORDINATION.md` only; `flagged.html` auto-merged taking their **A4-11** row — PR #5's retargeted historical evidence links flagged with counter-evidence, not reverted, per the parallel-session protocol; `docs/verification-report-alert4.md` §5 post-deploy verification merged cleanly): at the file-end conflict, kept their detailed integration log (PR #4 merge time, Pages build + delivery CI links, live-page verification, A4-11 restore request) verbatim and added a one-line cross-reference to this branch's earlier 65387ae merge. This branch's earlier short cross-reference paragraph was superseded by their full record. Verified on the merged tree before committing: `node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `npm test` **64 passed, 0 failed** · `node tests/link-check.mjs` **57 local references OK** · `flagged.html` structural tags balanced.
+>
 > **Merge 3 — `9572372b` merges `origin/main` (PR #6, `2a4d504` — `fd8d4cdb`'s post-merge record) into `arena/9572372b-alert4`**: merged cleanly with the `ort` strategy, zero conflicts, nothing lost. This brought in **`fd8d4cdb`'s Final integration record** (appended verbatim at the end of this file): PR #1 merged 2026-11-25T20:52:16Z as `102f9c4`, Pages `built` for that commit, the post-merge delivery run succeeded byte-for-byte, and the live site was verified (reference feed rows, game view, 2027-04-06 schedule, flagged page §1–15) — plus **COPY-8** (a transient snapshot-count difference on the live feed, re-checked against the official play-by-play, flagged unverified) and **`docs/copy-verification.md` §5**. `flagged.html` §15 gained their COPY-8 row; this branch's section was unchanged at that point (later renumbered §16 → §17 in merge 4).
 
 ### Copy session — `9572372b` (branch `arena/9572372b-alert4`, PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2))
@@ -288,7 +290,7 @@ verification and merge records are preserved below; nothing from sessions `07687
 | A4 Line-by-line verification vs official MLB StatsAPI | done | `arena-f17e9b8e` | `docs/verification-report-alert4.md` | 18 live re-verification rows + 5 provenance rows, each linked to the exact official request |
 | A5 Full test suite + link check + server smoke | done | `arena-f17e9b8e` | (read-only) | restoration ALL PASSED · smoke 64/64 · run-all 4/4 (jsdom 47/47) · props 5/5 · server all 200 |
 | A6 Flagged for Review page | done | `arena-f17e9b8e` | `flagged.html` | §§1–14 verbatim; `fd8d4cdb`'s §15 kept verbatim; this session's record published as §16 (A4-1…A4-10) |
-| A7 Integration: PR → `main`, merge, confirm Pages | in progress | `arena-f17e9b8e` | repo root | PR #4; results appended to the integration log below |
+| A7 Integration: PR → `main`, merge, confirm Pages | done | `arena-f17e9b8e` | repo root | PR #4 MERGED 2026-11-25T20:59:38Z (`65387ae`); Pages built; delivery CI green; live pages verified — see integration log |
 
 ## Verification summary (full table: `docs/verification-report-alert4.md`)
 
@@ -336,10 +338,48 @@ history is by design). Non-blocking.
 
 ## Integration log (session `arena-f17e9b8e`)
 
-- PR: https://github.com/kanlerxz87-cyber/Alert4/pull/4 (branch `arena/f17e9b8e-alert4` → `main`)
-- Merge result / Pages deploy: appended after merge + deploy verification.
+- **PR [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) — MERGED** at 2026-11-25T20:59:38Z.
+  Merge commit [`65387ae`](https://github.com/kanlerxz87-cyber/Alert4/commit/65387ae4ef836ddfe83ab49e866e58c7c2a75706).
+  Both PR checks green before merge ([run 45700064941](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700064941):
+  `test`, `dom-smoke`).
+- **GitHub Pages:** build at `65387ae` → `status: built`
+  ([pages build and deployment 45700166235](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700166235));
+  post-deploy [Site checks 45700167417](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700167417) and
+  [Published Pages delivery 45700287798](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700287798)
+  both **success** (published bytes match the deployed commit). Local run of
+  `tests/pages-delivery.mjs` is impossible from this sandbox (TLS egress blocked, ECONNRESET) —
+  CI is the reproducible channel.
+- **Live verification (fetch channel):**
+  [reviews.html?date=2026-08-26](https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26)
+  renders the three reference rows verbatim with identical counters (78 tracked entries vs the
+  reference snapshot's 76 — extra rows are official API events, COPY-8; one re-verified:
+  [824963:34 MF overturned, challengeTeamId 133](https://statsapi.mlb.com/api/v1/game/824963/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,reviewDetails,reviewType,isOverturned,challengeTeamId,matchup,batter,pitcher,fullName,hasReview),
+  which also explains A4-9's retained-challenge counter);
+  [index.html?date=2027-02-19](https://kanlerxz87-cyber.github.io/Alert4/index.html?date=2027-02-19)
+  renders all 17 upcoming spring-training games;
+  [game.html?gamePk=823096](https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=823096&date=2026-08-26)
+  renders linescore/box/PBP with per-row official source links;
+  [flagged.html](https://kanlerxz87-cyber.github.io/Alert4/flagged.html) serves §§1–16.
+  Full record: `docs/verification-report-alert4.md` §5.
+- **Merge 4** — `origin/main` @ `124bfea` (PR #5, session `d8da4b48`, which had itself merged
+  this session's PR #4): fast-forward, no conflicts. `npm ci` + full harness re-run green on
+  the combined tree (64/64 smoke, link-check OK).
+- **Request logged (per protocol — not edited):** PR #5 retargeted several historical evidence
+  links in `flagged.html` §§1–14, `docs/statsapi-field-map.md`, `docs/verification-report.md`
+  and `audit/*.md` from the upstream site to this deployment. Two attributions are factually
+  wrong as written (T-11's 2026-11-20 observation predates this repo's creation
+  [2026-11-25T20:37:14Z](https://api.github.com/repos/kanlerxz87-cyber/Alert4); field-map row 16
+  quotes an `html_url` the cited [upstream Pages API](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages)
+  does not return). Request: restore the upstream URLs on those historical rows (originals at
+  [5c02527](https://github.com/snapquast73-boop/LIVPBP/blob/5c02527d3c7a56ea66c698cfabff80a407b6dfd3/flagged.html)).
+  Published as `flagged.html` **A4-11** with counter-evidence; non-blocking.
+- **Other sessions:** PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2) (session
+  `9572372b`) remains **open** and untouched — its owner integrates it. PRs #1, #3, #5, #6 are
+  merged; all their work is preserved in `main`.
+- **Follow-up record PR:** this integration record itself is delivered via a follow-up PR from
+  this branch (linked here once opened).
 
-Integration result recorded during `9572372b`'s merge of `65387ae` into this branch (2026-11-25): PR #4 was **MERGED** to `main` as merge commit `65387ae` (GitHub merge of `arena/f17e9b8e-alert4`). This branch (`arena/9572372b-alert4`) then merged that `main` into itself; see **Merge 4** in the INTEGRATION MERGES block near the top of this file for the resolution. The Pages deployment for the final union is recorded in the post-merge record this repository ends with.
+Integration result recorded during `9572372b`'s merge of `65387ae` into this branch (2026-11-25): this branch then merged `65387ae` and retained the detailed record that session published as PR #7.
 
 ---
 

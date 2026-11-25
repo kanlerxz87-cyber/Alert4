@@ -80,5 +80,50 @@ page-fetch channel and read directly; each row links the exact request.
    documented design, not data loss.
 4. **All inherited flags stay published.** Items U-1…U-11, I-8, F-001…F-009, L-1…L-4,
    RR-01…RR-06, D-1…D-4, AF-1…AF-7, R2-1…R2-11 in `flagged.html` sections 1–14 are preserved
-   verbatim with their original source links (they point at the source repo, which remains
-   online). Section 15 adds this session's record.
+   with their original evidence (they point at the source repo, which remains online).
+   Section 15 is session `fd8d4cdb`'s copy checklist; section 16 is this session's record.
+5. **A4-11 (added after PR #5 merged):** session `d8da4b48` retargeted some historical
+   evidence links in §§1–14 and the upstream docs to this deployment. Two attributions are
+   factually wrong as written (T-11's 2026-11-20 observation predates this repo's creation
+   2026-11-25T20:37:14Z per the [repo API](https://api.github.com/repos/kanlerxz87-cyber/Alert4);
+   field-map row 16 quotes an `html_url` the cited
+   [upstream Pages API](https://api.github.com/repos/snapquast73-boop/LIVPBP/pages) does not
+   return). Published as `flagged.html` A4-11 with counter-evidence; restore request logged in
+   COORDINATION.md; merged edits not reverted, per the parallel-session protocol.
+
+## 5. Post-deploy verification (2026-11-25, after PR #4 merged)
+
+- PR [#4](https://github.com/kanlerxz87-cyber/Alert4/pull/4) merged at 2026-11-25T20:59:38Z,
+  merge commit `65387ae4ef836ddfe83ab49e866e58c7c2a75706`. Both PR checks passed before merge
+  (`test`, `dom-smoke` — [run 45700064941](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700064941)).
+- Pages [build](https://api.github.com/repos/kanlerxz87-cyber/Alert4/pages/builds/latest) at
+  `65387ae` → `status: built`
+  ([pages build and deployment run 45700166235](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700166235)).
+- Post-deploy CI: [Site checks (push) run 45700167417](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700167417)
+  and [Published Pages delivery run 45700287798](https://github.com/kanlerxz87-cyber/Alert4/actions/runs/45700287798)
+  both **success** — the delivery check compares the published bytes against the deployed
+  commit (the sandbox cannot run it locally: direct TLS egress is blocked, `ECONNRESET`).
+- Live pages verified through the fetch channel:
+  - [reviews.html?date=2026-08-26](https://kanlerxz87-cyber.github.io/Alert4/reviews.html?date=2026-08-26)
+    renders the same three reference rows verbatim (PHI@SEA `823096:36:p:MF` Stands 6–0;
+    CIN@SF `823180:57:p:MA` Stands 3–6 with "1 run(s) at risk"; CIN@SF `823180:84:p:NF`
+    Stands 10–9), same counters ("SEA: 0 manager challenges left now (1 used)",
+    "CIN 1 MGR · 2 ABS — SF 0 MGR · 1 ABS"), 15 games, "local log only". A fresh scan also
+    detects additional official review events the reference browser's snapshot did not hold
+    (78 vs 76 entries — the COPY-8 phenomenon); one extra row independently re-verified:
+    [824963 playByPlay](https://statsapi.mlb.com/api/v1/game/824963/playByPlay?fields=allPlays,about,atBatIndex,inning,halfInning,result,description,reviewDetails,reviewType,isOverturned,challengeTeamId,matchup,batter,pitcher,fullName,hasReview)
+    → `atBatIndex 34`, top 5th, `MF`, `isOverturned:true`, `challengeTeamId:133` (ATH),
+    "Athletics challenged (play at 1st), call on the field was overturned: Alan Roden grounds
+    out…" — and the retained challenge (`ATH: 1 manager challenge left now (1 used)`)
+    explains observation A4-9.
+  - [index.html?date=2027-02-19](https://kanlerxz87-cyber.github.io/Alert4/index.html?date=2027-02-19)
+    renders all 17 scheduled spring-training games (teams, venues, times) — upcoming game
+    days work with no code change.
+  - [game.html?gamePk=823096&date=2026-08-26](https://kanlerxz87-cyber.github.io/Alert4/game.html?gamePk=823096&date=2026-08-26)
+    renders the final 6–0, W Luzardo / L Woo, inning-by-inning linescore with per-row official
+    source links, and the full pitch-by-pitch timeline incl. ABS challenge markers.
+  - [flagged.html](https://kanlerxz87-cyber.github.io/Alert4/flagged.html) serves §§1–16
+    (intro copy note, §15 COPY-1…8, §16 A4-1…10 at the time of the check).
+- Later main advances (PR #5, session `d8da4b48`, merge `124bfea`) were merged back into this
+  branch; `npm ci` + full harness re-run green on the combined tree. PR #5's retargeted
+  historical evidence links are flagged as A4-11 (see §4.5), not reverted.

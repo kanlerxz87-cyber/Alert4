@@ -5,19 +5,26 @@
 > [`snapquast73-boop/LIVPBP` @ `5c02527`](https://github.com/snapquast73-boop/LIVPBP/commit/5c02527d3c7a56ea66c698cfabff80a407b6dfd3),
 > the revision published on [GitHub Pages](https://snapquast73-boop.github.io/LIVPBP/reviews.html?date=2026-08-26)
 > at the time of the copy. This deployment is <https://kanlerxz87-cyber.github.io/Alert4/>.
-> No site data or verification value was edited in the copy. Repo-local adaptations, all recorded:
+> All 40 tracked upstream files were verified byte-for-byte (SHA-256, zero mismatches) by session
+> `fd8d4cdb`; session `9572372b` independently confirmed byte-identity with `diff -r` apart from the
+> listed adaptations. Four parallel sessions imported the same commit on 2026-11-25 and their work
+> was merged without discarding any of it (see [`COORDINATION.md`](COORDINATION.md)):
 > session `076871a5` retargeted `404.html`'s base path, `package.json`'s homepage and the two
 > test-harness URLs to `/Alert4/`; session `fd8d4cdb` added a Pages-delivery CI guard and the copy
-> verification report; session `9572372b` merged the parallel copies and added the deployment-URL
-> fixes and documentation records listed in its board below. All 40 tracked upstream files were
-> verified byte-for-byte by session `fd8d4cdb` (SHA-256, zero mismatches); session `9572372b`
-> independently confirmed byte-identity with `diff -r` apart from the listed adaptations.
+> verification report; session `arena-f17e9b8e` re-verified every API contract against the official
+> MLB StatsAPI (A4-1…A4-10) and archived the upstream board at
+> [`audit/source-repo-COORDINATION.md`](audit/source-repo-COORDINATION.md) (same content as
+> [`docs/upstream-coordination.md`](docs/upstream-coordination.md)); session `9572372b` unioned the
+> copies and added the deployment-URL records, documentation union and link fixes described in
+> `COORDINATION.md`.
 > Copy checks, the official MLB StatsAPI spot-checks and every source link are in
-> [`docs/copy-verification.md`](docs/copy-verification.md). Copy-specific deviations are published on the
+> [`docs/copy-verification.md`](docs/copy-verification.md) and
+> [`docs/verification-report-alert4.md`](docs/verification-report-alert4.md).
+> Copy-specific deviations are published on the
 > [**⚑ Flagged for Review**](flagged.html)
-> page (section 15, plus section 16 for the `9572372b` integration pass); the upstream site's own
-> flags remain in sections 1–14. External links to the upstream repository are provenance links for
-> manual review, not internal navigation. The upstream coordination board is preserved verbatim at
+> page (sections 15–17); the upstream site's own flags remain in sections 1–14. External links to
+> the upstream repository are provenance links for manual review, not internal navigation. The
+> upstream coordination board is preserved verbatim at
 > [`docs/upstream-coordination.md`](docs/upstream-coordination.md); what the copy sessions checked
 > and could not verify live is in [`COORDINATION.md`](COORDINATION.md).
 >

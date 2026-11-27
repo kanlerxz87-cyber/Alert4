@@ -36,6 +36,57 @@ active for this repo) is preserved byte-for-byte at
 >
 > **Merge 3 — `9572372b` merges `origin/main` (PR #6, `2a4d504` — `fd8d4cdb`'s post-merge record) into `arena/9572372b-alert4`**: merged cleanly with the `ort` strategy, zero conflicts, nothing lost. This brought in **`fd8d4cdb`'s Final integration record** (appended verbatim at the end of this file): PR #1 merged 2026-11-25T20:52:16Z as `102f9c4`, Pages `built` for that commit, the post-merge delivery run succeeded byte-for-byte, and the live site was verified (reference feed rows, game view, 2027-04-06 schedule, flagged page §1–15) — plus **COPY-8** (a transient snapshot-count difference on the live feed, re-checked against the official play-by-play, flagged unverified) and **`docs/copy-verification.md` §5**. `flagged.html` §15 gained their COPY-8 row; this branch's section was unchanged at that point (later renumbered §16 → §17 in merge 4).
 
+## Session — `arena/8df99052-alert4` (2026-11-27): latency, game state, alert sound, official-scoring section
+
+**Scope.** Four requests from the owner: (1) the fastest feed/latency for in-game
+play-by-play, challenges/reviews and official-scoring pending/changes, staying inside the
+MLB API terms; (2) a pleasant ~3 s rain-drop alert sound with an on/off toggle and a way to
+test it; (3) capture the official live game state to the second, with before/after wording,
+for every game; (4) a separate, refresh-persistent log for official-scoring pending rulings
+and scoring changes, isolated from the alert system.
+
+**What was built**
+
+| Area | Change | Where |
+|---|---|---|
+| Usage bound | One token bucket for the whole tab: 30 req/s, 8 concurrent, narrows on 429/5xx/timeout, recovers slowly, silent while hidden. Every request is labelled per surface. | `assets/js/api.js` (`RATE`, `withBudget`, `usageStats`) |
+| Two-tier scan | ~120 B `metaData` probe per live game (with a per-request cache-bypass nonce, because the API serves `max-age=10`); full `playByPlay` only when the marker moved; status flips read out of band. Slate request cut to gamePk/status/teams; counters on first sight / status change / 10 s. | `assets/js/reviews-feed.js` |
+| Adaptive sweep | 125 ms on a small slate → 400 ms on a full one, doubling again when the bucket is ≥70%/full, self-scheduling. | `assets/js/reviews-feed.js` (`sweepIntervalMs`) |
+| Latency measurement | Every state snapshot carries our ISO clock **and** MLB's feed timecode; the health line shows the median gap and the live request rate. | `assets/js/game-state.js`, `reviews-feed.js` |
+| Game state | Score/outs/count/batter/pitcher/runners/inning/pitch/status per game, transitions with exact before/after wording, own store (`mlbp.gamestate.<date>`, `/api/game-state`), live strip on the feed. | `assets/js/game-state.js` (+`data/game-state-*.json`) |
+| Alert sound | ~2.6 s synthesised rain drop (6 drops, stereo drift, echo, lowpass); toggle + **Test sound** button; two independent players (alert vs scoring). | `assets/js/chime.js` |
+| Official scoring | Pending rulings (`os_ruling_pending_primary`/`_prior` via `GET /api/v1/eventTypes`) and scoring changes (diffed from consecutive reads) in their own section, store (`mlbp.scoring.<date>`, `/api/scoring-log`), poll loop, sound and rescan control. | `assets/js/scoring-log.js`, `scoring-ui.js`, `reviews.html` |
+| Server | Two isolated stores, merged on write, with their own endpoints and files. | `server.mjs` |
+| Docs | Usage/terms arithmetic, latency design, game state, scoring log, alert sound; flagged section 18 for the unverified items. | `docs/api-usage.md`, `latency.md`, `game-state.md`, `scoring-log.md`, `alert-sound.md`, `flagged.html` §18 |
+| Tests | New `tests/alert-pipeline-test.mjs` (29 checks); wired into `tests/run-all.mjs` and CI. | `tests/`, `.github/workflows/site-check.yml` |
+
+**Measured.** Measured with `node tools/measure-cadence.mjs` (shipped page, stubbed 15-game
+slate): **14.6 req/s steady state, 18 req/s in the busiest second**, against the 30/s
+ceiling — was ~128 req/s at the documented upstream cadences. Probes dominate the
+request count; full reads appear only when the feed actually moved.
+
+**Verified on this tree.** `node tools/restoration-check.mjs` **ALL CHECKS PASSED** ·
+`npm test` **64 passed, 0 failed** · `node tests/run-all.mjs` **all 5 suites PASS** ·
+`node tests/alert-pipeline-test.mjs` **29 checks passed** · `node tests/link-check.mjs`
+**68 local references OK** · server round-trip for `/api/game-state` and `/api/scoring-log`
+(merge on write, 400 on a bad date).
+
+**Not verified (honest log).** Egress from this sandbox is restricted to
+`github.com`, `codeload.github.com`, `api.github.com`, `registry.npmjs.org`, `pypi.org`,
+`files.pythonhosted.org` — **`statsapi.mlb.com` was unreachable**, so no live response was
+fetched in this session. Specifically unverified: that `metaData.timeStamp` exists and moves
+on every change (L-6), that the timecode is UTC (L-7, guarded by a sanity check), the
+`max-age=10` cache behaviour (L-8), the live Pages deployment (L-15), and whether the rain
+drop sounds pleasant in a real browser (L-12 — it is described, not auditioned). All of
+these are listed with their fallbacks on `flagged.html` §18; none is claimed as verified.
+
+**Deliberately not done.** The Gameday push WebSocket + `feed/live/diffPatch` (the fastest
+path that exists) is exposed in `api.js` but **not wired in**: one persistent socket per
+game is not obviously within "individual, non-commercial, non-bulk use", and a misapplied
+RFC-6902 patch corrupts state silently. The safe enablement shape is written down in
+`docs/latency.md` §5, and the game page's before/after state panel is recorded as remaining
+work (L-14) rather than claimed.
+
 ### Copy session — `9572372b` (branch `arena/9572372b-alert4`, PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2))
 
 > ## COPY SESSION (2026-11-25) — repo `kanlerxz87-cyber/Alert4`

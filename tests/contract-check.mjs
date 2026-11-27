@@ -55,8 +55,13 @@ for (const page of pages) {
   if (scripts.length) {
     const idx = (name) => scripts.findIndex((s) => s.endsWith(name));
     if (idx('api.js') > 0) problems.push(`${page}: assets/js/api.js must be the first script`);
+    /* The page-logic script must load after the shared modules; anything that
+     * only *decorates* the page (e.g. the separate scoring section) may follow
+     * it, so the rule allows the page logic to be last or second-to-last. */
     const last = scripts[scripts.length - 1];
-    if (scripts.length > 1 && !/(scoreboard|game|reviews-feed)\.js$/.test(last)) {
+    const penultimate = scripts[scripts.length - 2];
+    const isPageLogic = (s) => /(scoreboard|game|reviews-feed)\.js$/.test(s);
+    if (scripts.length > 1 && !isPageLogic(last) && !isPageLogic(penultimate)) {
       problems.push(`${page}: the page-logic script should load last (found ${last})`);
     }
   }

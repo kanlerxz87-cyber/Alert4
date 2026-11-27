@@ -191,6 +191,138 @@ function mergeFeedLogPayloads(existing, incoming, dateStr) {
   };
 }
 
+/** Read + parse a JSON request body with the same size guard the feed-log POST uses. */
+function readJsonBody(req, res, onPayload) {
+  let body = '';
+  req.setEncoding('utf8');
+  req.on('data', (chunk) => {
+    body += chunk;
+    if (body.length > 50 * 1024 * 1024) { // 50MB protection
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Payload too large' }));
+      req.destroy();
+    }
+  });
+  req.on('end', () => {
+    try {
+      onPayload(JSON.parse(body));
+    } catch (err) {
+      sendError(res, 400, `JSON parse error: ${err.message}`);
+    }
+  });
+}
+
+/* --------------------------------------------------- side stores (isolated)
+ * The alert feed log above is one store.  Two more exist *beside* it, each with
+ * its own file, its own endpoints and its own merge, so a problem with one can
+ * never corrupt the others:
+ *
+ *   game-state    data/game-state-<date>.json   official state snapshots
+ *   scoring-log   data/scoring-<date>.json      pending rulings / changes
+ *
+ * Both accept the same tiny envelope { v: 1, date, ... } and are merged (not
+ * overwritten) on write, so two browsers watching the same day never lose each
+ * other's observations.
+ */
+const STORES = {
+  gameState: {
+    dir: 'game-state',
+    listKeys: ['games'],
+    merge(existing, incoming, dateStr) {
+      const base = (existing && existing.v === 1) ? existing : { v: 1, date: dateStr, games: {} };
+      const out = { v: 1, date: dateStr, savedAt: Date.now(), games: { ...(base.games || {}) } };
+      const incomingGames = (incoming && incoming.games) || {};
+      for (const pk of Object.keys(incomingGames)) {
+        const a = out.games[pk] || { gamePk: Number(pk), matchupLabel: '', snapshots: [], transitions: [], lastSeenAt: 0 };
+        const b = incomingGames[pk] || {};
+        const snaps = [...(a.snapshots || [])];
+        const seen = new Set(snaps.map((x) => `${x && x.gameTimecode}|${x && x.capturedAt}`));
+        for (const snap of (b.snapshots || [])) {
+          const key = `${snap && snap.gameTimecode}|${snap && snap.capturedAt}`;
+          if (!seen.has(key)) { seen.add(key); snaps.push(snap); }
+        }
+        const trans = [...(a.transitions || [])];
+        const tse = new Set(trans.map((x) => `${x && x.gameTimecode}|${x && x.at}`));
+        for (const t of (b.transitions || [])) {
+          const key = `${t && t.gameTimecode}|${t && t.at}`;
+          if (!tse.has(key)) { tse.add(key); trans.push(t); }
+        }
+        snaps.sort((x, y) => (x.capturedAt || 0) - (y.capturedAt || 0));
+        trans.sort((x, y) => (x.at || 0) - (y.at || 0));
+        out.games[pk] = {
+          gamePk: Number(pk),
+          matchupLabel: b.matchupLabel || a.matchupLabel || '',
+          snapshots: snaps.slice(-240),
+          transitions: trans.slice(-320),
+          lastSeenAt: Math.max(a.lastSeenAt || 0, b.lastSeenAt || 0),
+          lastTimecode: b.lastTimecode || a.lastTimecode || '',
+        };
+      }
+      return out;
+    },
+  },
+  scoringLog: {
+    dir: 'scoring',
+    merge(existing, incoming, dateStr) {
+      const base = (existing && existing.v === 1) ? existing : { v: 1, date: dateStr, rows: [], events: [], baselines: {} };
+      const rows = new Map();
+      for (const row of [...(base.rows || []), ...((incoming && incoming.rows) || [])]) {
+        if (!row || !row.id) continue;
+        const prev = rows.get(row.id);
+        rows.set(row.id, prev ? { ...prev, ...row, firstSeen: Math.min(prev.firstSeen || Infinity, row.firstSeen || Infinity), lastSeen: Math.max(prev.lastSeen || 0, row.lastSeen || 0) } : row);
+      }
+      const events = new Map();
+      for (const ev of [...(base.events || []), ...((incoming && incoming.events) || [])]) {
+        if (!ev || !ev.id) continue;
+        if (!events.has(ev.id)) events.set(ev.id, ev);
+      }
+      const baselines = { ...(base.baselines || {}) };
+      for (const key of Object.keys((incoming && incoming.baselines) || {})) {
+        if (!baselines[key]) baselines[key] = incoming.baselines[key];
+      }
+      return {
+        v: 1,
+        date: dateStr,
+        savedAt: Date.now(),
+        rows: [...rows.values()].sort((x, y) => (y.lastSeen || 0) - (x.lastSeen || 0)).slice(0, 400),
+        events: [...events.values()].sort((x, y) => (y.at || 0) - (x.at || 0)).slice(0, 400),
+        baselines,
+      };
+    },
+  },
+};
+
+function sideStorePath(store, dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  return path.join(DATA_DIR, `${store.dir}-${dateStr}.json`);
+}
+
+function readSideStore(store, dateStr) {
+  const filePath = sideStorePath(store, dateStr);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.warn(`[server] failed to read ${store.dir} store for ${dateStr}:`, err);
+    return null;
+  }
+}
+
+function writeSideStore(store, dateStr, incoming) {
+  const filePath = sideStorePath(store, dateStr);
+  if (!filePath) return false;
+  try {
+    const merged = store.merge(readSideStore(store, dateStr), incoming, dateStr);
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
+    fs.renameSync(tempPath, filePath);
+    return merged;
+  } catch (err) {
+    console.error(`[server] failed to write ${store.dir} store for ${dateStr}:`, err);
+    return false;
+  }
+}
+
 /* --------------------------------------------------------------- push (SSE)
  * Live tail of the shared feed log. Polling it (GET /api/feed-log) leaves a
  * window of up to the poll interval between "another browser/session wrote an
@@ -392,6 +524,52 @@ const server = http.createServer((req, res) => {
       }
     });
     return;
+  }
+
+  // GET/POST /api/game-state — official state snapshots, separate from the feed log.
+  if (pathname === '/api/game-state') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (req.method === 'GET') {
+      if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required'); return; }
+      const stored = readSideStore(STORES.gameState, dateStr);
+      sendJSON(res, 200, stored || { v: 1, date: dateStr, savedAt: Date.now(), games: {} });
+      return;
+    }
+    if (req.method === 'POST') {
+      readJsonBody(req, res, (payload) => {
+        if (!payload || payload.v !== 1 || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date || '')) {
+          sendError(res, 400, 'Invalid payload: must have v: 1 and a valid date');
+          return;
+        }
+        const saved = writeSideStore(STORES.gameState, payload.date, payload);
+        if (!saved) { sendError(res, 500, 'Failed to save game-state store'); return; }
+        sendJSON(res, 200, { ok: true, date: payload.date, games: Object.keys(saved.games || {}).length });
+      });
+      return;
+    }
+  }
+
+  // GET/POST /api/scoring-log — pending rulings + scoring changes, separate again.
+  if (pathname === '/api/scoring-log') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (req.method === 'GET') {
+      if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) { sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required'); return; }
+      const stored = readSideStore(STORES.scoringLog, dateStr);
+      sendJSON(res, 200, stored || { v: 1, date: dateStr, savedAt: Date.now(), rows: [], events: [], baselines: {} });
+      return;
+    }
+    if (req.method === 'POST') {
+      readJsonBody(req, res, (payload) => {
+        if (!payload || payload.v !== 1 || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date || '')) {
+          sendError(res, 400, 'Invalid payload: must have v: 1 and a valid date');
+          return;
+        }
+        const saved = writeSideStore(STORES.scoringLog, payload.date, payload);
+        if (!saved) { sendError(res, 500, 'Failed to save scoring store'); return; }
+        sendJSON(res, 200, { ok: true, date: payload.date, rows: saved.rows.length, events: saved.events.length });
+      });
+      return;
+    }
   }
 
   // --- Static File Serving ---

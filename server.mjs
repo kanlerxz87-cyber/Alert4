@@ -39,6 +39,8 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml',
   '.ico': 'image/x-icon',
   '.webp': 'image/webp',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg',
   '.txt': 'text/plain; charset=utf-8',
   '.md': 'text/markdown; charset=utf-8',
 };
@@ -243,6 +245,12 @@ function writeLogToDisk(dateStr, payload) {
     fs.writeFileSync(tempPath, serialized, 'utf8');
     fs.renameSync(tempPath, filePath);
 
+    // Retention: the alert log keeps the newest RETAIN_DAYS date files.  The
+    // scoring log is never pruned here — it is the record the owner asked to
+    // keep — and the two families are pruned independently so one policy can
+    // never delete the other's data.
+    pruneOldLogs('feed-log-', RETAIN_DAYS);
+
     // Update index
     const indexPath = path.join(DATA_DIR, 'feed-log-index.json');
     let index = {};
@@ -255,6 +263,146 @@ function writeLogToDisk(dateStr, payload) {
   } catch (err) {
     console.error(`[server] failed to write feed log for ${dateStr}:`, err);
     return false;
+  }
+}
+
+/* --------------------------------------------------------- official scoring log
+ * Deliberately a SEPARATE file (data/scoring-log-<date>.json) and a separate
+ * endpoint from the alert feed log.  The owner asked for the official-scoring
+ * record to be kept apart so changes to it cannot disrupt the alert system:
+ * nothing here reads or writes data/feed-log-*.json, and a failure in this
+ * store cannot fail a feed-log write.
+ */
+function getScoringPath(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  return path.join(DATA_DIR, `scoring-log-${dateStr}.json`);
+}
+
+const SCORING_TYPES = ['pending', 'changes', 'anomalies'];
+
+function emptyScoringLog(dateStr) {
+  return { v: 1, date: dateStr, savedAt: Date.now(), pending: [], changes: [], anomalies: [], lastState: {} };
+}
+
+function readScoringFromDisk(dateStr) {
+  const filePath = getScoringPath(dateStr);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.warn(`[server] failed to read scoring log for ${dateStr}:`, err);
+    return null;
+  }
+}
+
+/* Key strategy mirrors the client (scoring-log.js recordKey): pending rows are
+ * one per at-bat, change rows are one per at-bat per reclassification, anomaly
+ * rows carry their own id.  Merging is append-only and idempotent. */
+function scoringKey(type, row) {
+  if (!row || row.gamePk === undefined || row.gamePk === null) return null;
+  if (type === 'pending') return `${row.gamePk}:${row.atBatIndex}:pending`;
+  if (type === 'changes') {
+    const ev = row.to && row.to.eventType ? row.to.eventType : '';
+    const out = row.to && row.to.isOut ? '1' : '0';
+    return `${row.gamePk}:${row.atBatIndex}:change:${ev}:${out}`;
+  }
+  return row.id ? String(row.id) : null;
+}
+
+function mergeScoringRows(existing, incoming, type) {
+  const map = new Map();
+  const order = [];
+  const take = (row) => {
+    const key = scoringKey(type, row);
+    if (!key) return;
+    const prev = map.get(key);
+    if (!prev) {
+      map.set(key, row);
+      order.push(key);
+      return;
+    }
+    const merged = { ...prev, ...row };
+    merged.firstSeen = Math.min(
+      Number(prev.firstSeen) || Number(row.firstSeen) || Date.now(),
+      Number(row.firstSeen) || Number(prev.firstSeen) || Date.now(),
+    );
+    merged.lastSeen = Math.max(Number(prev.lastSeen) || 0, Number(row.lastSeen) || 0);
+    // The observed "before" is evidence; a later read must never blank it.
+    if (prev.before && !row.before) merged.before = prev.before;
+    if (prev.resolution && !row.resolution) merged.resolution = prev.resolution;
+    map.set(key, merged);
+  };
+  (Array.isArray(existing) ? existing : []).forEach(take);
+  (Array.isArray(incoming) ? incoming : []).forEach(take);
+  return order.map((k) => map.get(k)).filter(Boolean);
+}
+
+function writeScoringToDisk(dateStr, payload) {
+  const filePath = getScoringPath(dateStr);
+  if (!filePath) return false;
+  try {
+    const existing = readScoringFromDisk(dateStr) || emptyScoringLog(dateStr);
+    const merged = {
+      v: 1,
+      date: dateStr,
+      savedAt: Date.now(),
+      pending: mergeScoringRows(existing.pending, payload.pending, 'pending'),
+      changes: mergeScoringRows(existing.changes, payload.changes, 'changes'),
+      anomalies: mergeScoringRows(existing.anomalies, payload.anomalies, 'anomalies'),
+      lastState: { ...(existing.lastState || {}), ...(payload.lastState || {}) },
+    };
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
+    fs.renameSync(tempPath, filePath);
+
+    const indexPath = path.join(DATA_DIR, 'scoring-log-index.json');
+    let index = {};
+    if (fs.existsSync(indexPath)) {
+      try { index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) || {}; } catch (_) {}
+    }
+    index[dateStr] = merged.savedAt;
+    fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8');
+    return merged;
+  } catch (err) {
+    console.error(`[server] failed to write scoring log for ${dateStr}:`, err);
+    return false;
+  }
+}
+
+/* Retention for the alert feed log only.  The official scoring record is kept
+ * indefinitely (it is the audit trail the owner asked for) and lives in its own
+ * files, so this never touches it. */
+const RETAIN_DAYS = 14;
+
+function pruneOldLogs(prefix, days) {
+  try {
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+    const keepIndex = new Set();
+    fs.readdirSync(DATA_DIR).forEach((name) => {
+      if (!name.startsWith(prefix) || !name.endsWith('.json')) return;
+      if (name.includes('index')) return;
+      const m = /-(\d{4}-\d{2}-\d{2})\.json$/.exec(name);
+      if (!m) return;
+      const filePath = path.join(DATA_DIR, name);
+      const when = fs.statSync(filePath).mtimeMs;
+      if (when < cutoff) {
+        fs.rmSync(filePath, { force: true });
+        console.log(`[server] pruned ${name} (older than ${days} days)`);
+      } else {
+        keepIndex.add(m[1]);
+      }
+    });
+    // Keep the date index in step with what actually survives.
+    const indexPath = path.join(DATA_DIR, 'feed-log-index.json');
+    if (fs.existsSync(indexPath)) {
+      try {
+        const index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) || {};
+        Object.keys(index).forEach((d) => { if (!keepIndex.has(d)) delete index[d]; });
+        fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8');
+      } catch (_) { /* index is a convenience, never load-bearing */ }
+    }
+  } catch (err) {
+    console.warn('[server] retention sweep skipped:', err.message);
   }
 }
 
@@ -320,6 +468,65 @@ const server = http.createServer((req, res) => {
     // idempotently, exactly like its ordinary GET).
     const current = readLogFromDisk(dateStr);
     if (current) sseWrite(res, `event: feed-log\ndata: ${JSON.stringify(current)}\n\n`);
+    return;
+  }
+
+  // GET /api/scoring-log?date=YYYY-MM-DD — the official-scoring record for a day.
+  if (pathname === '/api/scoring-log' && req.method === 'GET') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+      return;
+    }
+    const log = readScoringFromDisk(dateStr);
+    sendJSON(res, 200, log || emptyScoringLog(dateStr));
+    return;
+  }
+
+  // POST /api/scoring-log — append (idempotently) one or more record types.
+  if (pathname === '/api/scoring-log' && req.method === 'POST') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 20 * 1024 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        if (!payload || typeof payload !== 'object' || payload.v !== 1 ||
+          !payload.date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+          sendError(res, 400, 'Invalid payload: must be object with v: 1 and valid date (YYYY-MM-DD)');
+          return;
+        }
+        // Accept either {type, rows} (one kind per write, what the client sends)
+        // or a whole-log object for an import/backfill.
+        let normalized = payload;
+        if (payload.type) {
+          if (SCORING_TYPES.indexOf(payload.type) === -1) {
+            sendError(res, 400, 'type must be one of ' + SCORING_TYPES.join(', '));
+            return;
+          }
+          normalized = { v: 1, date: payload.date, [payload.type]: Array.isArray(payload.rows) ? payload.rows : [] };
+        }
+        const saved = writeScoringToDisk(payload.date, normalized);
+        if (!saved) { sendError(res, 500, 'Failed to save scoring log to disk'); return; }
+        sendJSON(res, 200, {
+          ok: true,
+          date: saved.date,
+          savedAt: saved.savedAt,
+          pending: saved.pending.length,
+          changes: saved.changes.length,
+          anomalies: saved.anomalies.length,
+        });
+      } catch (err) {
+        sendError(res, 400, `JSON parse error: ${err.message}`);
+      }
+    });
     return;
   }
 

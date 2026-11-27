@@ -99,10 +99,11 @@ async function stubFetch(url) {
       ],
     });
   }
-  // Lean per-game status probe used by the game page watcher.
-  if (/\/feed\/live\?fields=/.test(u) || /\/feed\/live\?[^]*fields=gameData,status/.test(u)) {
-    return jsonResponse({ gameData: { status: feed.gameData.status } });
-  }
+  /* Every feed/live call gets the same document: `fields=` is a projection of
+   * this payload, not a different resource.  (The page reads one projected
+   * feed/live per poll now — the status watcher and the play scan are the same
+   * request family — so answering a projected call with *only* status starves
+   * it, which is not what MLB does.) */
   if (/\/feed\/live/.test(u)) return jsonResponse(feed);
   if (/\/playByPlay/.test(u)) {
     const lean = /fields=/.test(u);

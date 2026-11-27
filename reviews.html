@@ -36,7 +36,14 @@
     </div>
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
-      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-toggle-btn" class="btn btn-ghost" aria-pressed="false"
+              title="Alert sound on/off. When on, a gentle ~3 s raindrop plays for every event that appears in this feed: new challenges, manager challenges, reviews, umpire reviews, boundary calls, official-scorer pending rulings, official scoring changes, and a run at risk. Saved in this browser, so it stays on across refreshes.">🔇 Alert sound off</button>
+      <button id="sound-test-btn" class="btn btn-ghost"
+              title="Play the alert now — the same ~3 s raindrop a real alert plays, whether the switch is on or off. Use it any time to confirm the alerts are reaching your speakers.">▶ Test sound</button>
+      <label class="vol-wrap" title="Alert volume">
+        <span>Vol</span>
+        <input id="sound-volume" type="range" min="0" max="100" step="5" value="50" aria-label="Alert volume">
+      </label>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
@@ -57,6 +64,8 @@
 
     <section id="feed-list" class="feed-list" aria-live="polite"></section>
 
+    <div id="sound-status" class="sound-status"></div>
+    <div id="latency-line" class="latency-line"></div>
     <div id="status-line" class="status-line"></div>
   </main>
 
@@ -116,6 +125,8 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/alert-sound.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

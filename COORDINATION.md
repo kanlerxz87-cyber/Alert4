@@ -430,3 +430,61 @@ Most recent date with games: Wed Oct 28, 2026"),
   truth for data values; every flagged/unverified item stays published on the Flagged for Review page
   with its source links (§§1–17). Unverified items are non-blocking and none were silently corrected.
 - Post-merge record itself delivered as a follow-up PR from `arena/9572372b-alert4` (linked in the PR list).
+
+---
+
+## Session `arena/dd614350-alert4` — latency, alert sound, official-scoring log (2026-11-27)
+
+Branch `arena/dd614350-alert4` (fixed by Arena; branched from `main` @ `3e53419`). Brief: fastest
+in-game play-by-play feed and the moment a challenge / manager challenge / review / umpire review /
+official-scoring-pending appears or is re-scored; a pleasant all-season alert sound that can be
+toggled for testing; the official game state captured live to the second; and pending / re-scored
+plays kept in a **separate, refresh-proof** section that cannot disrupt alerts.
+
+### Task board
+
+| Task | Status | File scope |
+|---|---|---|
+| L-1 Fastest feed: remove the ~1 MB full-feed read and the playByPlay+feed pair from the hot path; one `fields`-projected `feed/live` per game (deep ~120–200 KB, lean probe ~2–4 KB) | done | `assets/js/api.js`, `assets/js/reviews-feed.js`, `assets/js/game.js` |
+| L-2 Latency engine: 125 ms whole-slate status sweep (review **called** detector + out-of-band deep read), 250 ms per-game lean probe with change signature, deep read only on a signal, scan time subtracted from the next wait | done | `assets/js/reviews-feed.js` |
+| L-3 Stay inside the MLB terms: per-tab rolling budget (240 req/min, waiting not dropping), 40 ms gap, one polling tab per browser (leader lease), 429 quiet period kept, no server crawler, no bulk/history collection | done | `assets/js/api.js`, `assets/js/scoreboard.js`, `assets/js/reviews-feed.js`, `assets/js/game.js` |
+| L-4 Write the missing `docs/api-compliance.md` (terms quoted, every endpoint/cadence/size, what is deliberately *not* done, the pull-only latency floor) | done | `docs/api-compliance.md`, `README.md` |
+| S-1 ~3 s raindrop alert (six drops + low pad, sine/triangle, 12 ms ramps, low-pass, bus compressor), volume, burst collapse, hidden-tab silence | done | `assets/js/alert-sound.js` (new) |
+| S-2 Toggle on/off on the Replay Feed **and** the game page (shared, persisted) + a **▶ Test sound** button that plays the real figure whether the switch is on or off; alerts for every event that shows in the feed (ABS pitch challenges tracked but silent) | done | `alert-sound.js`, `reviews-feed.js`, `game.js`, `reviews.html`, `game.html`, `style.css` |
+| O-1 Per-second official game state capture: score, hits, errors, inning, count, outs, batter, pitcher, runners, at-bat, officials, counters, feed `metaData.timeStamp`, ISO timestamp | done | `assets/js/scoring-log.js` (new) |
+| O-2 Separate persistence: own module, own `localStorage` namespace, own server endpoint + file (`/api/scoring-log`, `data/scoring-log-<date>.json`), append-only merges, survives refresh, JSON/CSV export, kept indefinitely while the alert log is pruned at 14 days | done | `scoring-log.js`, `server.mjs`, `reviews-feed.js` |
+| O-3 Pending (`os_ruling_pending_primary` / `_prior`) and reclassification records with the **exact official wording before and after**; pending resolved in place; edits/vanished plays logged as flagged, never corrected | done | `scoring-log.js`, `reviews.js` (unchanged parser), `reviews-feed.js`, `reviews.html` |
+| O-4 Isolation proof: a throwing scoring log leaves the alert feed tracking (asserted in the new test suite) | done | `tools/alert-latency-test.mjs` |
+| T-1 New regression suite (27 checks) + wired into `npm test` and `tests/run-all.mjs` | done | `tools/alert-latency-test.mjs` (new), `package.json`, `tests/run-all.mjs` |
+
+### Verification on this tree
+
+`node tools/restoration-check.mjs` **ALL CHECKS PASSED** · `node tools/smoke-test.mjs` **64 passed,
+0 failed** · `node tools/alert-latency-test.mjs` **27 passed, 0 failed** ·
+`node tests/run-all.mjs` syntax OK, link-check **61 refs** OK, contract-check **8 bindings** OK,
+jsdom **47/47**, alert-latency **27/27** · `node tests/props-provenance-test.mjs` **5 passed**.
+
+Two pre-existing test harnesses needed updating because the *product* changed shape, and both edits
+are recorded rather than hidden:
+
+1. `tools/smoke-test.mjs` served game 824466 the *other* game's `feed/live` payload. That was
+   invisible while the feed read plays from `/playByPlay` (824466 → empty) but would have attributed
+   plays to the wrong game now that one projected feed carries them. The stub now returns 824466's own
+   (empty, Final) game, and the G-3 reclassification mutation lands in the payload the app reads.
+2. `tests/jsdom-render-test.mjs` answered a projected `feed/live` call with *only*
+   `{gameData:{status}}`, which is not how MLB behaves (`fields` projects the same document). It now
+   returns the fixture for that game.
+
+### Honest limits stated in the docs
+
+- The StatsAPI is **pull-only**; `metaData.wait` is 10 s and the live feed is served `max-age=10`, so
+  a new per-game document appears at most about every 10 s. The site cannot beat that, and both pages
+  report the *observed* time of the last change signal instead of claiming a latency figure.
+- The undocumented Gameday WebSocket and `diffPatch` exist; neither is used (undocumented contract, and
+  a wrong patch would silently corrupt an alert). This is recorded with the reasoning in
+  `docs/api-compliance.md` §3.
+- "Pitch count" in the per-second state is the current at-bat's pitch events (`currentAtBatPitches`);
+  team pitching totals are not in the projected feed and are deliberately **not** guessed.
+- Live MLB API re-verification is still not possible from this sandbox (egress allowlist). Every new
+  field is read from the documented GUMBO structure and exercised against fixtures shaped from it; the
+  new suite makes no claim about a live fetch.

@@ -167,6 +167,9 @@
   function sweepStatus() {
     if (state.sweepInFlight) return;
     if (document.hidden) return;
+    /* Only the tab holding the API leader lease polls MLB; a second tab on the
+     * same machine reads the shared state instead of doubling the request rate. */
+    if (MLB.isLeader && !MLB.isLeader()) return;
     if (!state.games.some(isLive)) return;
     state.sweepInFlight = true;
     MLB.slateStatus(state.date)
@@ -451,6 +454,12 @@
   function tick() {
     if (document.hidden) {
       schedulePoll(1000);
+      return;
+    }
+    if (MLB.isLeader && !MLB.isLeader()) {
+      /* Another tab polls MLB for this browser; keep the board current from the
+       * shared sweep instead of issuing a second full schedule poll. */
+      schedulePoll(IDLE_POLL_MS);
       return;
     }
     var pending = fetchSchedule();

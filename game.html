@@ -25,6 +25,9 @@
     <a class="btn btn-ghost" href="index.html">← Scoreboard</a>
     <a class="btn btn-feed" href="reviews.html" title="Live replay review feed for every game">🚨 Replay Feed</a>
     <div class="game-controls">
+      <button id="sound-toggle-btn" class="btn btn-ghost" aria-pressed="false"
+              title="Alert sound on/off (shared with the Replay Feed). A gentle ~3 s raindrop for a new challenge, review, boundary call, official-scorer pending ruling or official scoring change in this game.">🔇 Alert sound off</button>
+      <button id="sound-test-btn" class="btn btn-ghost" title="Play the alert now — the same ~3 s raindrop a real alert plays.">▶ Test sound</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown"></span>
     </div>
@@ -91,6 +94,8 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/alert-sound.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
   <script src="assets/js/props.js"></script>
   <script src="assets/js/game.js"></script>
 </body>

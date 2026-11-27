@@ -6,11 +6,14 @@
  * play-by-play with pitch detail, the box score, the Props & Matchup tab and
  * the Challenges & Reviews tab.
  *
- * Cadence (README §"Auto-refreshes"): 500 ms while a game is live, 250 ms
- * while a review is in flight (lean playByPlay probe, full feed only when the
- * review state flips), slower for preview/final games, and a 125 ms lean
- * status watcher that paints the review banner the instant MLB flips the
- * official status.  All polling pauses while the tab is hidden.
+ * Cadence: the whole page now runs off ONE projected `feed/live` read per poll
+ * (`MLB.gameState`: every play, its reviewDetails, counters and officials in
+ * ~120–200 KB instead of the ~1 MB full feed) — so the 500 ms live cadence
+ * costs a fraction of what it used to and the page never waits on a
+ * second request.  REVIEW_POLL_MS applies while a review is in flight, slower
+ * cadences for preview/final games, and a status watcher paints the review
+ * banner the instant MLB flips the official status.  All polling pauses while
+ * the tab is hidden, and only the tab holding the API leader lease polls MLB.
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -49,6 +52,7 @@
     lastSignature: '',
     lastError: null,
     pendingRerender: false,
+    forceNextRead: false,
   };
 
   function $(id) { return document.getElementById(id); }
@@ -790,25 +794,28 @@
   function refresh() {
     if (document.hidden) { scheduleNext(); return; }
     if (state.pollInFlight) return;
+    /* One polling tab per browser: another tab on the same machine already
+     * reads MLB, so this one backs off to the slow cadence rather than doubling
+     * the request rate against the "non-bulk use" term. */
+    if (MLB.isLeader && !MLB.isLeader()) {
+      scheduleNext();
+      return;
+    }
     state.pollInFlight = true;
 
-    /* While a review is in flight, probe the lean play-by-play endpoint first
-     * and pull the full feed only when the review state flips. */
-    var pre = state.inReview
-      ? MLB.playByPlay(state.gamePk, { fields: 'allPlays,about,atBatIndex,hasReview,isComplete,reviewDetails,inProgress,playEvents' })
-        .then(function (lean) {
-          var plays = (lean && lean.allPlays) || [];
-          var stillReview = plays.some(function (p) {
-            if (!p) return false;
-            if (p.reviewDetails && p.reviewDetails.inProgress === true) return true;
-            if (Array.isArray(p.playEvents) && p.playEvents.some(function (ev) { return !!(ev && ev.reviewDetails && ev.reviewDetails.inProgress === true); })) return true;
-            return !!(p.about && p.about.hasReview === true && p.about.isComplete === false);
-          });
-          if (!stillReview) state.inReview = false;
-          return stillReview ? null : MLB.gameFeed(state.gamePk);
-        })
-        .catch(function () { return MLB.gameFeed(state.gamePk); })
-      : MLB.gameFeed(state.gamePk);
+    /* One projected read per poll.  The old path probed the lean play-by-play
+     * and then pulled the ~1 MB full feed only when a review flipped, which put
+     * the *whole* page behind a second round trip for the one event it cares
+     * about.  The projected read already contains every play and its
+     * reviewDetails, so a new or resolving review is rendered in the same
+     * response that discovered it.
+     *
+     * `nocache` on a manual Refresh: pressing Refresh must show what MLB has
+     * now, not a body cached a second ago. */
+    var reading = state.forceNextRead === true;
+    state.forceNextRead = false;
+    var pre = MLB.gameState(state.gamePk, { ttl: 1000, nocache: reading })
+      .catch(function () { return MLB.gameFeed(state.gamePk); });
 
     return pre.then(function (feed) {
       state.pollInFlight = false;
@@ -817,6 +824,27 @@
       state.lastError = null;
       state.plays = Reviews.playsOf(feed);
       deriveReviews();
+      state.inReview = state.reviews.some(function (r) { return r && r.inProgress === true; });
+
+      /* Second-by-second official game state + the isolated scoring log.  This
+       * page already holds the exact payload, so the record is written without a
+       * single extra request.  Guarded: the log must never disturb this page. */
+      if (global.ScoringLog && typeof global.ScoringLog.ingestGame === 'function') {
+        try {
+          var logDate = (feed.gameData && feed.gameData.datetime && feed.gameData.datetime.officialDate) ||
+            (state.log && state.log.date) || MLB.todayISO();
+          global.ScoringLog.ingestGame(logDate, {
+            gamePk: state.gamePk,
+            teams: (feed.gameData && feed.gameData.teams) ? {
+              away: (feed.gameData.teams.away && feed.gameData.teams.away.team) || null,
+              home: (feed.gameData.teams && feed.gameData.teams.home && feed.gameData.teams.home.team) || null,
+            } : null,
+            payload: feed,
+            capturedAt: Date.now(),
+            fullState: true,
+          });
+        } catch (e) { /* isolated */ }
+      }
 
       if (state.log) applyScoringChangesFromLog();
 
@@ -853,7 +881,8 @@
     if (state.reviews.length) bits.push(state.reviews.length + ' review event(s)');
     if (state.scoringChanges.length) bits.push(state.scoringChanges.length + ' scoring change(s)');
     bits.push('updated ' + new Date().toLocaleTimeString());
-    bits.push('source: statsapi.mlb.com/api/v1.1/game/' + state.gamePk + '/feed/live');
+    bits.push('source: statsapi.mlb.com/api/v1.1/game/' + state.gamePk + '/feed/live (projected fields)');
+    try { bits.push(MLB.budgetSummary()); } catch (e) { /* diagnostics only */ }
     return bits.join(' · ');
   }
 
@@ -913,7 +942,36 @@
     });
 
     var refreshBtn = $('refresh-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', function () { refresh(); });
+    if (refreshBtn) refreshBtn.addEventListener('click', function () {
+      state.forceNextRead = true;
+      refresh();
+    });
+
+    /* Alert sound: the same switch as the Replay Feed, same preference key. */
+    var soundBtn = $('sound-toggle-btn');
+    if (soundBtn) {
+      var snd = global.AlertSound;
+      function paint() {
+        var on = snd ? snd.isEnabled() : false;
+        soundBtn.textContent = on ? '🔊 Alert sound on' : '🔇 Alert sound off';
+        soundBtn.classList.toggle('btn-on', on);
+        soundBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+      soundBtn.addEventListener('click', function () {
+        if (!snd) return;
+        snd.toggle();
+        paint();
+        if (snd.isEnabled()) snd.chime('toggle');
+      });
+      paint();
+    }
+    var testBtn = $('sound-test-btn');
+    if (testBtn) {
+      testBtn.addEventListener('click', function () {
+        var r = global.AlertSound ? global.AlertSound.test() : { ok: false, reason: 'sound module not loaded' };
+        statusLine(r.ok ? 'Test sound: playing the ~3 s raindrop alert.' : 'Test sound: ' + r.reason, !r.ok);
+      });
+    }
 
     document.addEventListener('visibilitychange', function () {
       if (!document.hidden) { refresh(); watchStatus(); }

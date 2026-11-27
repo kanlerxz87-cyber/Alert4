@@ -308,7 +308,35 @@ function routeFetch(url) {
   else if (/\/game\/823109\/playByPlay/.test(u)) body = PBP_823109;
   else if (/\/game\/824466\/playByPlay/.test(u)) body = { allPlays: [] };
   else if (/\/game\/823109\/feed\/live/.test(u)) body = FEED_823109;
-  else if (/\/game\/824466\/feed\/live/.test(u)) body = FEED_823109;
+  /* Game 824466 is Final on this slate.  Its feed carries NO plays: before this
+   * harness served it the *other* game's payload, which only stayed invisible
+   * while the feed read its plays from /playByPlay (824466 -> {allPlays: []}).
+   * The feed now reads one projected feed/live per game, so the stub has to
+   * return that game's own (empty) game. */
+  else if (/\/game\/824466\/feed\/live/.test(u)) {
+    body = {
+      metaData: { wait: 10, timeStamp: '20260915_234000' },
+      gameData: {
+        game: { pk: 824466 },
+        status: { abstractGameState: 'Final', codedGameState: 'F', detailedState: 'Final', statusCode: 'F' },
+        teams: {
+          away: { team: { id: 119, name: 'Los Angeles Dodgers', abbreviation: 'LAD' } },
+          home: { team: { id: 113, name: 'Cincinnati Reds', abbreviation: 'CIN' } },
+        },
+        review: { hasChallenges: false, away: { used: 0, remaining: 1 }, home: { used: 0, remaining: 1 } },
+        absChallenges: { hasChallenges: true, away: { usedSuccessful: 0, usedFailed: 0, remaining: 2 }, home: { usedSuccessful: 0, usedFailed: 0, remaining: 2 } },
+        officials: [],
+      },
+      liveData: {
+        plays: { allPlays: [], currentPlay: { about: {}, result: {}, count: {}, matchup: {}, playEvents: [], runners: [] } },
+        linescore: {
+          currentInning: 9, inningState: 'End', isTopInning: false, isFinal: true,
+          balls: 0, strikes: 0, outs: 3,
+          teams: { away: { runs: 4, hits: 9, errors: 0 }, home: { runs: 0, hits: 4, errors: 1 } },
+        },
+      },
+    };
+  }
   else if (/\/people\/660271\/stats/.test(u)) body = u.includes('opposingPlayerId') ? H2H_STATS : HITTER_STATS;
   else if (/\/people\/592789\/stats/.test(u)) body = PITCHER_STATS;
   else if (u.includes('/api/feed-log')) body = { v: 1, date: '2026-09-15', entries: [], order: [], snapshots: {}, irregularities: {}, grace: {}, settled: [] };
@@ -1159,13 +1187,17 @@ console.log('\n[13] reference-parity fixes (session 6e2a58d9: G-2…G-5, G-9)');
   });
 
   await check('G-3: official scoring changes chime and render in All', async () => {
+    /* The feed reads each game's plays from ONE projected feed/live response, so
+     * the "the official scorer changed it between polls" mutation has to land in
+     * that payload (and in /playByPlay, which stays as the fallback path). */
     let pbp = JSON.parse(JSON.stringify(PBP_823109));
+    let feed = JSON.parse(JSON.stringify(FEED_823109));
     const mutFetch = (url) => {
       const u = String(url);
-      if (/\/game\/823109\/playByPlay/.test(u)) {
+      if (/\/game\/823109\/playByPlay/.test(u) || /\/game\/823109\/feed\/live/.test(u)) {
         return Promise.resolve({
           ok: true, status: 200, headers: { get: () => null },
-          json: async () => JSON.parse(JSON.stringify(pbp)),
+          json: async () => JSON.parse(JSON.stringify(/feed\/live/.test(u) ? feed : pbp)),
         });
       }
       return routeFetch(u);
@@ -1176,6 +1208,8 @@ console.log('\n[13] reference-parity fixes (session 6e2a58d9: G-2…G-5, G-9)');
     /* Reclassify a completed play between polls (error→single style diff). */
     pbp.allPlays[0].result.eventType = 'field_error';
     pbp.allPlays[0].result.description = 'Reached on error.';
+    feed.liveData.plays.allPlays[0].result.eventType = 'field_error';
+    feed.liveData.plays.allPlays[0].result.description = 'Reached on error.';
     await new Promise((resolve) => {
       mst.lastChimeAt = 0;
       mst.soundOn = true;

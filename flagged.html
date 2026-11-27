@@ -34,7 +34,8 @@
         re-verification of every API contract against the official MLB StatsAPI (A4-1…A4-10),
         with the full report in <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>;
         <a href="#section-17">section 17</a> is session <code>9572372b</code>'s integration &amp;
-        provenance record (C-1…C-5).
+        provenance record (C-1…C-5), and <a href="#section-18">section 18</a> is session
+        <code>arena/dd614350-alert4</code>'s latency, alert-sound and official-scoring-log record (L4-1…L4-7).
       </p>
       <p>
         This page lists every claim made about this rebuild together with the
@@ -1242,6 +1243,86 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
       <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
     </p>
+    <h2 id="section-18">18. Latency, alert sound &amp; official-scoring log (session <code>arena/dd614350-alert4</code>, 2026-11-27)</h2>
+    <p>
+      This section records the 2026-11-27 work: a faster in-game feed, an all-season alert sound, and
+      the separate, refresh-proof official-scoring record. Everything here is either read from the
+      documented GUMBO/StatsAPI structure or verified by the shipped offline test suites; the live
+      <code>statsapi.mlb.com</code> could not be reached from the session sandbox (egress allowlist, same
+      limitation as C-4), so <strong>no row below claims a live fetch</strong>.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Item</th><th>What the sources say</th><th>What the site does</th><th>Source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>L4-1</td>
+          <td class="wrap">"Fastest feed" for in-game play-by-play.</td>
+          <td class="wrap">The StatsAPI is pull-only. The live feed's own <code>metaData.wait</code> is <code>10</code> (seconds) and the feed is served with <code>max-age=10</code>, so a new per-game document appears at most about every 10 s.</td>
+          <td class="wrap">The floor is documented rather than papered over. The site removes every wait <em>after</em> publication: 125 ms whole-slate status sweep (the review-<em>called</em> signal, ~2.4 KB), 250 ms per-game lean probe (~2–4 KB), deep read only on a change signature, out-of-band read the instant a sweep sees a review code, and one projected (<code>fields=</code>) feed per game instead of the ~1 MB document. Both pages print the observed time of the last change signal, not a claimed latency.</td>
+          <td class="wrap"><a href="docs/api-compliance.md">docs/api-compliance.md</a> §3–§4; <code>assets/js/api.js</code>, <code>assets/js/reviews-feed.js</code></td>
+          <td class="status-ok">Implemented · latency floor documented</td>
+        </tr>
+        <tr>
+          <td>L4-2</td>
+          <td class="wrap">Stay within the MLB StatsAPI terms.</td>
+          <td class="wrap">Every response links MLB's notice (<code>gdx.mlb.com/components/copyright.txt</code>): "Only individual, non-commercial, non-bulk use of the Materials is permitted." MLB.com's Terms of Use §1 bars automated collection. No published rate limit exists.</td>
+          <td class="wrap">Self-policed in <code>api.js</code>: 240 requests per rolling minute per tab (a request that would exceed it waits, never drops), 40 ms minimum gap, one polling tab per browser (<code>localStorage</code> leader lease), the 429 quiet period kept, tab-hidden polling stopped, retention 14 days on the alert log, no server-side crawler, no historical bulk collection, no WebSocket/<code>diffPatch</code> use (undocumented contract). The live count is displayed on both pages.</td>
+          <td class="wrap"><a href="docs/api-compliance.md">docs/api-compliance.md</a> §1–§3, §6; <code>BUDGET_PER_MIN</code>, <code>claimLeader()</code> in <code>api.js</code></td>
+          <td class="status-ok">Implemented · public-deployment question still the owner's (unchanged)</td>
+        </tr>
+        <tr>
+          <td>L4-3</td>
+          <td class="wrap">Alert sound, all season.</td>
+          <td class="wrap">Owner brief: pleasant for a whole season, "maybe a 3 second rain drop sound", toggleable to test, and an alert for every event that appears in the feed.</td>
+          <td class="wrap">~3 s six-drop raindrop over a low pad with a settling tail; sine/triangle only, 12 ms raised-cosine ramps, low-pass, bus compressor, volume slider, 1.2 s burst collapse, silent in a hidden tab. One persisted switch on both the Replay Feed and the game page, plus a <strong>▶ Test sound</strong> button that plays the identical figure whether the switch is on or off. Rings for challenges, manager/umpire reviews, boundary calls, pending rulings, scoring changes and runs at risk; routine ABS pitch challenges are tracked and shown but silent, per the owner's note.</td>
+          <td class="wrap"><code>assets/js/alert-sound.js</code>; <code>tools/alert-latency-test.mjs</code> §1</td>
+          <td class="status-ok">Implemented · 9 checks</td>
+        </tr>
+        <tr>
+          <td>L4-4</td>
+          <td class="wrap">Official game state captured live, to the second.</td>
+          <td class="wrap">The feed publishes score, hits/errors, inning state, count, outs, batter/pitcher/runners, the at-bat in progress, <code>officials</code>, the review/ABS counters and its own <code>metaData.timeStamp</code>.</td>
+          <td class="wrap">Each capture stores all of the above plus a wall-clock ISO timestamp and the feed's <code>timeStamp</code>, from the same payload the alert path already holds (no extra request). <strong>Pitch count</strong> is recorded only as the current at-bat's pitch events (<code>currentAtBatPitches</code>); team pitching totals are not in the projected feed and are deliberately not guessed.</td>
+          <td class="wrap"><code>assets/js/scoring-log.js</code> (<code>ingestGame</code>); GUMBO <code>metaData</code>/<code>gameData.officials</code></td>
+          <td class="status-ok">Implemented · pitch-count scope stated</td>
+        </tr>
+        <tr>
+          <td>L4-5</td>
+          <td class="wrap">Pending rulings and scoring changes, logged separately and persistently.</td>
+          <td class="wrap">The API itself defines <code>os_ruling_pending_primary</code> / <code>os_ruling_pending_prior</code> ("Official Scorer Ruling Pending", <code>GET /api/v1/eventTypes</code>). It carries <strong>no scoring-change marker</strong>, so a reclassification is knowable only by holding the exact official classification and diffing it against a later read.</td>
+          <td class="wrap">A separate module, store and server file record both, with the exact official wording before and after (<code>result.eventType</code>, <code>result.description</code>, <code>isOut</code>, outs, RBI, score), both timestamps, and the pending→resolved transition. Survives a refresh (localStorage, newest 14 dates) and, with the persistence server, is shared and kept indefinitely; JSON/CSV export. Payload edits that are not a reclassification, and plays that vanish, are logged as flagged, never corrected.</td>
+          <td class="wrap"><a href="docs/api-compliance.md">docs/api-compliance.md</a> §5; <code>scoring-log.js</code>; <code>server.mjs</code> <code>/api/scoring-log</code>; <code>tools/alert-latency-test.mjs</code> §2, §4</td>
+          <td class="status-ok">Implemented · 17 checks incl. persistence + isolation</td>
+        </tr>
+        <tr>
+          <td>L4-6</td>
+          <td class="wrap">The scoring log must not be able to disrupt alerts.</td>
+          <td class="wrap">Owner requirement: keep this work separate from the alert system.</td>
+          <td class="wrap">Separate module (<code>scoring-log.js</code>), storage namespace (<code>mlbp.scoringlog.*</code>), timer, server endpoint and data file. The alert path only <em>reads</em> the store (one render section on its own tab). Both the sweep and the game page wrap the ingest in <code>try/catch</code>. The new suite boots the page with a scoring log that throws on every call and asserts the alert feed keeps tracking.</td>
+          <td class="wrap"><code>assets/js/reviews-feed.js</code> (<code>ingestGame</code>), <code>assets/js/game.js</code>; <code>tools/alert-latency-test.mjs</code> §2 "a scoring-log failure cannot break the alert feed"</td>
+          <td class="status-ok">Implemented · asserted</td>
+        </tr>
+        <tr>
+          <td>L4-7</td>
+          <td class="wrap">Live re-verification against <code>statsapi.mlb.com</code>.</td>
+          <td class="wrap">Same sandbox restriction as C-4: egress is limited to <code>github.com</code>, <code>codeload.github.com</code>, <code>api.github.com</code>, <code>registry.npmjs.org</code>, <code>pypi.org</code>, <code>files.pythonhosted.org</code>.</td>
+          <td class="wrap">Not performed and not claimed. The new code reads only fields already documented in <code>docs/statsapi-field-map.md</code> / the GUMBO structure, and the new suite (<code>tools/alert-latency-test.mjs</code>, 27 checks) runs against fixtures shaped from it plus the real shipped scripts in jsdom and the real <code>server.mjs</code>.</td>
+          <td class="wrap"><code>tools/alert-latency-test.mjs</code>; <a href="docs/api-compliance.md">docs/api-compliance.md</a></td>
+          <td class="status-flag">Unverified against the live API — flagged, carried forward</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      Verification on this tree (2026-11-27): <code>node tools/restoration-check.mjs</code> ALL CHECKS PASSED ·
+      <code>node tools/smoke-test.mjs</code> 64 passed, 0 failed · <code>node tools/alert-latency-test.mjs</code>
+      27 passed, 0 failed · <code>node tests/run-all.mjs</code> syntax, link-check (61 refs), contract-check
+      (8 bindings), jsdom (47/47) and alert-latency (27/27) all PASS · <code>node tests/props-provenance-test.mjs</code>
+      5 passed. Two inherited harnesses were updated because the product's request shape changed (see
+      <a href="COORDINATION.md">COORDINATION.md</a>); both edits are written down there, not hidden.
+    </p>
+
   </main>
 
   <footer class="site-footer">

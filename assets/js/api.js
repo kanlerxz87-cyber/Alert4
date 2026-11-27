@@ -24,12 +24,52 @@
   var QUIET_MIN_MS = 1000;
   var QUIET_MAX_MS = 300000;
 
+  /* ---------------------------------------------------------- request budget
+   * MLB publishes no rate limit for the StatsAPI and no written authorization;
+   * the binding terms are its usage notice ("only individual, non-commercial,
+   * non-bulk use", http://gdx.mlb.com/components/copyright.txt — linked from
+   * every response) plus MLB.com's Terms of Use §1, which bars automated
+   * collection.  The client therefore polices itself rather than relying on a
+   * server to say stop:
+   *
+   *   - BUDGET_PER_MIN is a hard ceiling on requests this tab issues in any
+   *     rolling 60 s.  New requests wait for a slot instead of firing (the
+   *     waiting caller is never dropped, so a slow minute only delays a poll).
+   *   - MIN_GAP_MS keeps consecutive requests from the same tab from bursting.
+   *   - Only ONE tab on the machine polls MLB: leadership is claimed in
+   *     localStorage (see claimLeader), so two open tabs do not double the
+   *     load.  The leader re-claims every LEADER_TTL_MS; a tab that cannot
+   *     claim takes over after another LEADER_STALE_MS of silence.
+   *   - Responses that MLB marks `max-age=10` are honoured by caller TTLs —
+   *     polling the same live game faster than that only costs MLB a cache hit
+   *     and buys the page nothing, so no caller asks for more.
+   *
+   * These are limits per *browser tab*, which is how the site is used: one
+   * person watching the slate.  Nothing here fans out — there is no server-side
+   * crawler and no bulk/archival collection anywhere in the client.
+   */
+  var BUDGET_PER_MIN = 240;
+  var MIN_GAP_MS = 40;
+  var LEADER_KEY = 'mlbp.api.leader';
+  var LEADER_TTL_MS = 4000;
+  var LEADER_STALE_MS = 12000;
+  var TAB_ID = 'tab-' + Math.random().toString(36).slice(2) + '-' + Date.now().toString(36);
+
   var state = {
     quietUntil: 0,
     lastError: null,
     lastOK: 0,
-    requests: 0,
+    requests: 0,       // requests issued by this tab (all time)
     cacheHits: 0,
+    windowStart: 0,    // rolling-minute bookkeeping
+    windowCount: 0,
+    lastRequestAt: 0,
+    waiting: 0,        // callers currently parked on the budget
+    throttled: 0,      // how many times the budget made a caller wait
+    budgetWaitMs: 0,   // total time spent waiting on the budget (diagnostics)
+    leader: false,
+    lastPingAt: 0,
+    lastSnapshotAt: 0,
   };
 
   var cache = Object.create(null);
@@ -67,19 +107,114 @@
     return err;
   }
 
+  /* ------------------------------------------------------- budget + leader */
+
+  function readLeader() {
+    try {
+      var raw = global.localStorage.getItem(LEADER_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+  }
+
+  function writeLeader(id, at) {
+    try {
+      global.localStorage.setItem(LEADER_KEY, JSON.stringify({ id: id, at: at }));
+    } catch (e) { /* private mode: single-tab assumption is the fallback */ }
+  }
+
+  /* Deterministic-ish leadership: this tab polls MLB only while it holds the
+   * lease.  Losing the lease never throws; the caller simply stops scheduling
+   * new MLB requests (see requiresLeader).
+   *
+   * A tab that has never yielded keeps the lease: the value it wrote is the
+   * one it reads back, so `mine` is true and nothing is stolen.  Another tab
+   * takes over only when the holder has been silent for LEADER_STALE_MS, which
+   * is longer than the slowest page cadence, so a live leader cannot be
+   * displaced by a tab that was merely opened later. */
+  function claimLeader() {
+    var nowAt = now();
+    var held = readLeader();
+    var mine = !!held && held.id === TAB_ID;
+    if (mine) {
+      if (!state.leader || nowAt - state.lastPingAt > LEADER_TTL_MS) {
+        writeLeader(TAB_ID, nowAt);
+        state.lastPingAt = nowAt;
+      }
+      state.leader = true;
+      return true;
+    }
+    if (!held || nowAt - Number(held.at || 0) > LEADER_STALE_MS) {
+      writeLeader(TAB_ID, nowAt);
+      state.lastPingAt = nowAt;
+      state.leader = true;
+      return true;
+    }
+    state.leader = false;
+    return false;
+  }
+
+  function releaseLeader() {
+    var held = readLeader();
+    if (held && held.id === TAB_ID) {
+      try { global.localStorage.removeItem(LEADER_KEY); } catch (e) { /* ignore */ }
+    }
+    state.leader = false;
+  }
+
+  /* Callers that must not run twice poll this.  Ordinary one-shot reads
+   * (stats, registry) ignore it. */
+  function isLeader() { return claimLeader(); }
+
+  /* Park a caller until the rolling-minute budget and the inter-request gap
+   * both allow a request.  Resolves with the number of ms it had to wait. */
+  function awaitSlot() {
+    var waited = 0;
+    function step() {
+      var t = now();
+      if (t - state.windowStart >= 60000) {
+        state.windowStart = t;
+        state.windowCount = 0;
+      }
+      var gap = Math.max(0, state.lastRequestAt + MIN_GAP_MS - t);
+      var budgetFull = state.windowCount >= BUDGET_PER_MIN;
+      if (!budgetFull && gap <= 0) {
+        state.windowCount += 1;
+        state.lastRequestAt = t;
+        if (waited) {
+          state.throttled += 1;
+          state.budgetWaitMs += waited;
+        }
+        return Promise.resolve(waited);
+      }
+      var wait = budgetFull ? Math.min(1000, Math.max(80, 60000 - (t - state.windowStart))) : gap;
+      state.waiting += 1;
+      return sleep(wait).then(function () {
+        state.waiting -= 1;
+        waited += wait;
+        return step();
+      });
+    }
+    return step();
+  }
+
   /**
    * getJSON(url, opts)
    *   opts.ttl      cache lifetime in ms (0 = no cache, the default)
    *   opts.retries  extra attempts after a failed one (default 1)
    *   opts.signal   external AbortSignal (poll loops use it to cancel)
    *   opts.keepQuiet  bypass the 429 quiet window (used by the quiet probe only)
+   *   opts.noBudget bypass the rolling-minute budget (never used by the site;
+   *                 present so a diagnostic can measure a deliberate burst)
+   *   opts.nocache  ignore a cached body even when a ttl is set — what a manual
+   *                 refresh needs, so pressing Refresh can never show a stale
+   *                 second-old body
    */
   function getJSON(url, opts) {
     opts = opts || {};
     var ttl = opts.ttl || 0;
     var retries = typeof opts.retries === 'number' ? opts.retries : 1;
 
-    if (ttl && cache[url] && now() - cache[url].at < cache[url].ttl) {
+    if (ttl && !opts.nocache && cache[url] && now() - cache[url].at < cache[url].ttl) {
       state.cacheHits += 1;
       return Promise.resolve(cache[url].data);
     }
@@ -95,58 +230,61 @@
 
     function once() {
       attempt += 1;
-      state.requests += 1;
 
-      var controller = new AbortController();
-      var timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
-      var external = opts.signal;
-      if (external) {
-        if (external.aborted) controller.abort();
-        else external.addEventListener('abort', function () { controller.abort(); }, { once: true });
-      }
+      return (opts.noBudget ? Promise.resolve(0) : awaitSlot()).then(function () {
+        state.requests += 1;
 
-      var request = fetch(url, {
-        method: 'GET',
-        mode: 'cors',
-        cache: 'no-store',
-        credentials: 'omit',
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-
-      return request.then(function (res) {
-        clearTimeout(timer);
-
-        if (res.status === 429) {
-          var wait = parseRetryAfter(res.headers.get('Retry-After')) || QUIET_DEFAULT_MS;
-          wait = Math.min(QUIET_MAX_MS, Math.max(QUIET_MIN_MS, wait));
-          state.quietUntil = Math.max(state.quietUntil, now() + wait);
-          throw ApiError('StatsAPI asked to slow down (HTTP 429); pausing ' + Math.round(wait / 1000) + 's', 429, url);
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
+        var external = opts.signal;
+        if (external) {
+          if (external.aborted) controller.abort();
+          else external.addEventListener('abort', function () { controller.abort(); }, { once: true });
         }
-        if (!res.ok) throw ApiError('HTTP ' + res.status + ' from ' + url, res.status, url);
-        return res.json();
-      }).then(function (data) {
-        clearTimeout(timer);
-        state.lastOK = now();
-        state.lastError = null;
-        if (ttl) {
-          cache[url] = { at: now(), ttl: ttl, data: data };
-          pruneCache();
-        }
-        return data;
-      }).catch(function (err) {
-        clearTimeout(timer);
-        state.lastError = err;
 
-        var status = err && err.status;
-        var retryable = !status || status >= 500 || err.name === 'AbortError' || err.name === 'TypeError';
-        if (retryable && attempt <= retries) {
-          return sleep(300 * attempt).then(once);
-        }
-        if (err.name === 'AbortError') {
-          throw ApiError('Request timed out after ' + REQUEST_TIMEOUT_MS + 'ms: ' + url, 0, url);
-        }
-        throw err;
+        var request = fetch(url, {
+          method: 'GET',
+          mode: 'cors',
+          cache: 'no-store',
+          credentials: 'omit',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+
+        return request.then(function (res) {
+          clearTimeout(timer);
+
+          if (res.status === 429) {
+            var wait = parseRetryAfter(res.headers.get('Retry-After')) || QUIET_DEFAULT_MS;
+            wait = Math.min(QUIET_MAX_MS, Math.max(QUIET_MIN_MS, wait));
+            state.quietUntil = Math.max(state.quietUntil, now() + wait);
+            throw ApiError('StatsAPI asked to slow down (HTTP 429); pausing ' + Math.round(wait / 1000) + 's', 429, url);
+          }
+          if (!res.ok) throw ApiError('HTTP ' + res.status + ' from ' + url, res.status, url);
+          return res.json();
+        }).then(function (data) {
+          clearTimeout(timer);
+          state.lastOK = now();
+          state.lastError = null;
+          if (ttl) {
+            cache[url] = { at: now(), ttl: ttl, data: data };
+            pruneCache();
+          }
+          return data;
+        }).catch(function (err) {
+          clearTimeout(timer);
+          state.lastError = err;
+
+          var status = err && err.status;
+          var retryable = !status || status >= 500 || err.name === 'AbortError' || err.name === 'TypeError';
+          if (retryable && attempt <= retries) {
+            return sleep(300 * attempt).then(once);
+          }
+          if (err.name === 'AbortError') {
+            throw ApiError('Request timed out after ' + REQUEST_TIMEOUT_MS + 'ms: ' + url, 0, url);
+          }
+          throw err;
+        });
       });
     }
 
@@ -248,12 +386,82 @@
       });
   }
 
-  /* Lean per-game status projection for the game page's 125ms watcher (~150 B). */
+  /* Lean per-game status projection for the game page's status watcher (~150 B). */
   function gameStatusLean(gamePk, opts) {
     opts = opts || {};
-    var fields = 'gameData,status,abstractGameState,codedGameState,detailedState,statusCode,reason,startTimeTBD,abstractGameCode';
+    var fields = 'metaData,timeStamp,gameData,status,abstractGameState,codedGameState,detailedState,statusCode,reason,startTimeTBD,abstractGameCode';
     return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(fields), {
       signal: opts.signal, retries: 0,
+    });
+  }
+
+  /* ----------------------------------------------------- official game state
+   *
+   * The "capture everything, every second" surfaces.  Two shapes:
+   *
+   *   gameState(gamePk)
+   *     Everything a play-by-play alert needs, in ONE request: metaData (the
+   *     feed's own update clock), gameData.status (official status / review
+   *     codes), the review + ABS counters, the officials (the umpire crew a
+   *     review names), liveData.linescore (score, inning, count, outs,
+   *     runners), liveData.plays.currentPlay (the at-bat in progress) and every
+   *     completed play's classification.  It deliberately excludes `players`,
+   *     `boxscore` and `decisions` — those are the bulk of the 700 KB–1 MB full
+   *     feed and cost latency on every poll.  Used by the game page's alert
+   *     read and by the replay feed's play-by-play scan.
+   *
+   *   gameStateLean(gamePk)
+   *     The cheap "did anything change at all" read: metaData + status +
+   *     linescore + currentPlay (~2–4 KB).  This is what the seconds-level game
+   *     state capture polls.
+   *
+   * Both honour the feed's cache: MLB serves the live feed with max-age=10 and
+   * the metaData timeStamp advances with each published update, so callers pass
+   * the ttl their cadence needs — the seconds-level capture asks for 1000 ms so
+   * it never serves a 10 s-old body back to itself, while a faster alert scan
+   * reuses the body it just fetched instead of re-requesting an unchanged feed.
+   */
+  var EVENT_PLAY_FIELDS = 'allPlays,about,atBatIndex,hasReview,isComplete,inning,halfInning,isTopInning,' +
+    'isScoringPlay,result,eventType,description,isOut,rbi,awayScore,homeScore,count,balls,strikes,outs,' +
+    'matchup,batter,id,fullName,pitcher,playEvents,details,call,reviewDetails,isOverturned,inProgress,' +
+    'reviewType,challengeTeamId,type,startTime,endTime,runners,isScoringEvent,playIndex,movement,index,' +
+    'isPitch,pitchNumber,hasOutcome,used,remaining,usedSuccessful,usedFailed';
+
+  /* gameData fields the alert/capture paths read: status, counters, officials,
+   * the umpire crew and the two team identities.  No players, no boxscore. */
+  var STATE_FIELDS = 'metaData,wait,timeStamp,gameData,game,status,abstractGameState,codedGameState,' +
+    'detailedState,statusCode,reason,startTimeTBD,abstractGameCode,review,absChallenges,hasChallenges,' +
+    'away,home,used,remaining,usedSuccessful,usedFailed,officials,official,type,fullName,' +
+    'teams,datetime,officialDate,gameDate,liveData,linescore,currentInning,currentInningOrdinal,' +
+    'inningState,inningHalf,isTopInning,scheduledInnings,balls,strikes,outs,runs,hits,errors,' +
+    'leftOnBase,offense,batter,onDeck,inHole,first,second,third,defense,pitcher,catcher,isFinal,' +
+    'plays,currentPlay,result,event,eventType,description,about,atBatIndex,isComplete,isScoringPlay,' +
+    'halfInning,inning,count,matchup,playEvents,isPitch,call,hasReview,reviewDetails,inProgress,' +
+    'isOverturned';
+
+  function gameState(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' +
+      encodeURIComponent(STATE_FIELDS + ',' + EVENT_PLAY_FIELDS), {
+      ttl: opts.ttl || 0, signal: opts.signal, retries: 0, nocache: opts.nocache === true,
+    });
+  }
+
+  function gameStateLean(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(STATE_FIELDS), {
+      ttl: opts.ttl || 0, signal: opts.signal, retries: 0, nocache: opts.nocache === true,
+    });
+  }
+
+  /* Identity lines for the umpire crew — called once per crew, cached an hour,
+   * only for officials actually named in a review.  Never per poll. */
+  function peopleBrief(personIds, opts) {
+    opts = opts || {};
+    var ids = (personIds || []).filter(function (id) { return id; }).join(',');
+    if (!ids) return Promise.resolve({ people: [] });
+    return getJSON(API_ROOT + '/v1/people?personIds=' + encodeURIComponent(ids), {
+      ttl: 3600000, signal: opts.signal, retries: 0,
     });
   }
 
@@ -390,16 +598,32 @@
     return isFinite(n) ? n : (fallback === undefined ? 0 : fallback);
   }
 
+  /* One-line, human-readable request-budget summary for the status lines. */
+  function budgetSummary() {
+    var used = state.windowCount;
+    var waiters = state.waiting ? ' · ' + state.waiting + ' queued' : '';
+    return 'API ' + used + '/' + BUDGET_PER_MIN + ' req/min' + waiters +
+      (state.leader ? ' · this tab polls' : ' · another tab polls');
+  }
+
   global.MLB = {
     SPORT_ID: SPORT_ID,
     API_ROOT: API_ROOT,
     STATUS_FIELDS: STATUS_FIELDS,
     SCHEDULE_HYDRATE: SCHEDULE_HYDRATE,
+    BUDGET_PER_MIN: BUDGET_PER_MIN,
+    TAB_ID: TAB_ID,
     getJSON: getJSON,
+    budgetSummary: budgetSummary,
+    isLeader: isLeader,
+    releaseLeader: releaseLeader,
     schedule: schedule,
     scheduleRange: scheduleRange,
     slateStatus: slateStatus,
     gameFeed: gameFeed,
+    gameState: gameState,
+    gameStateLean: gameStateLean,
+    peopleBrief: peopleBrief,
     gameStatusLean: gameStatusLean,
     playByPlay: playByPlay,
     boxscore: boxscore,

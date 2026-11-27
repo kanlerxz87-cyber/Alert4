@@ -10,3 +10,6 @@ node_modules/
 # Local server persistence store (runtime data, never committed)
 data/
 
+
+# Generated alert preview (regenerate with tools/make-alert-wav.py) is committed
+# on purpose so the fallback path works on GitHub Pages.

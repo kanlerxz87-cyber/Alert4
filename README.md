@@ -334,9 +334,12 @@ for archived games the request is scoped to the feed's game season.
 │       ├── reviews-feed.js    # All-games Replay Feed logic (diff helpers + page)
 │       ├── scoreboard.js      # Scoreboard page logic
 │       ├── feed-log.js        # Per-date feed log: localStorage + optional server.mjs sync/SSE
+│       ├── alert-sound.js     # Isolated alert chime: 3-second raindrop, toggle + volume
+│       ├── game-state.js      # Live game-state capture (score, count, outs, batter/pitcher, to the second)
+│       ├── scoring-log.js     # Separate persistent scoring log (pending rulings + scoring changes)
 │       ├── props.js           # Two-sided hit model, stat cache, Props & Matchup tab
 │       └── game.js            # Game page logic (live "at bat" module, linescore, box, PBP)
-├── server.mjs                 # Optional zero-dependency persistence server (static + feed log)
+├── server.mjs                 # Optional zero-dependency persistence server (static + feed log + scoring log)
 ├── tests/                     # Zero-network checks: link check, jsdom render test, fixtures
 ├── docs/verification-report.md# Field-by-field verification with official source links
 └── COORDINATION.md            # Multi-session task board, claims, merge + deployment record
@@ -385,12 +388,76 @@ changes) is persistent across the website:
   in the others as soon as that write lands, instead of on their next poll; the
   periodic pull remains the fallback when the stream is unavailable (static
   hosting, no `EventSource`, blocked connection).
+- **Official scoring pending + scoring changes, separately**: the same durability,
+  with their own store and their own stream, so the review log is independent of the
+  alert system — `data/scoring-log-<date>.json` + `data/scoring-log-index.json` via
+  `POST /api/scoring-log`, `GET /api/scoring-log?date=<date>` and
+  `GET /api/scoring-log/stream?date=<date>`, mirrored into
+  `localStorage` under `mlbp.scoringlog.<date>` (30 dates kept). Entries are merged
+  idempotently by id, so a reload, a second browser or a reconnecting stream cannot
+  duplicate a ruling.
 - **Across the website**:
   - `reviews.html`: renders the All feed and dedicated ✏️ Scoring Changes tab.
   - `game.html`: dedicated **Challenges & Reviews** tab displays official scoring changes
     with full initial-call-to-final-ruling breakdown, and updates the tab badge.
   - `index.html`: scoreboard cards display the `✏️ N Scoring Change(s)` indicator.
   (the original `docs/scoring-changes.md` was not uploaded — see F-003 on [`flagged.html`](flagged.html)).
+
+### Replay Feed: live state, alert sound, and the separate scoring log
+
+`reviews.html` carries four new surfaces on top of the alert feed:
+
+- **🔔 Alert sound** — `assets/js/alert-sound.js` is a self-contained module (it never
+  touches the feed, and the feed never touches the Web Audio graph). It synthesises a
+  ~3-second **raindrop** chime: a pentatonic drop cluster over a soft pad with a light
+  rain bed and a short echo, so it is pleasant to hear all day. It is triggered for
+  **every** event the feed alerts on — umpire/manager challenges, reviews, boundary
+  calls, official-scorer pending rulings, official scoring changes and the
+  runs-at-risk banner — and it stays silent for routine ABS pitch challenges, which
+  happen many times per game and would make an all-day chime unlistenable (an ABS
+  challenge that could remove a run still chimes through the runs-at-risk path).
+  **🔊 Sound On / 🔇 Sound Off** toggles it (the preference is stored in
+  `localStorage` as `mlbp.pref.sound`), **▶ Test sound** always plays the chime
+  regardless of the toggle, and the volume slider (`mlbp.pref.soundVolume`, default
+  50%) scales it.
+- **📍 Live Game State** — every game on the slate is polled and its official state is
+  captured live by `assets/js/game-state.js`: inning, score, ball/strike/outs, batter,
+  pitcher, pitch count in the at-bat, runners, and the exact official play description,
+  each observation stamped **to the second** (`HH:MM:SS`). One card per game shows the
+  latest state; every alerted row carries the **before** and **after** official state
+  (exact official wording, quoted) so a review, pending ruling or scoring change can be
+  read against the game it happened in.
+- **📝 Official Scoring Log** — a **separate** system (`assets/js/scoring-log.js`) that
+  logs *official-scorer pending rulings* and *official scoring changes* and nothing
+  else. It has its own keys (`localStorage` `mlbp.scoringlog.<date>`), its own server
+  endpoints (`GET`/`POST /api/scoring-log`, `GET /api/scoring-log/stream`), its own
+  disk store (`data/scoring-log-<date>.json`) and its own export (JSON/CSV). It never
+  plays sound and never depends on the alert system, so a change in one cannot disrupt
+  the other — and it survives a refresh (and, with `server.mjs`, a restart).
+- **⏱ Latency & API budget** — live request latency (last / p50 / p95), request count,
+  cache/dedupe counts, the measured request rate against the sustained ceiling, the
+  governor's concurrency and spacing, and the 429 quiet-period countdown.
+
+### Latency and the API budget
+
+The alert path is deliberately layered so the fastest signal wins:
+
+| Signal | Cadence | Cost |
+|---|---|---|
+| Lean status sweep (`abstractGameState` + review codes for the whole slate) | **125 ms** | 1 small request per sweep, high priority |
+| `playByPlay` per live game (fields-projected) | **250 ms** per game, phase-staggered across the slate | 1 request per game per cycle |
+| `playByPlay` for a game that is *under review* | **250 ms** | same request, no extra cost |
+| Remaining-challenges counters | **5 s** per game (forced on a review flip) | 1 small request every 5 s |
+| Full slate (`/schedule`) | **5 s** (cached) | status freshness comes from the 125 ms sweep instead |
+
+The request governor in `assets/js/api.js` caps concurrency at 6, spaces request starts
+by 25 ms, dedupes identical in-flight URLs, honours `Retry-After` on a 429 (quiet
+period 1 s–5 min, doubling backoff up to 8×), pauses when the tab is hidden, and
+enforces a **sustained ceiling of 40 requests/second** with a burst allowance. The
+high-priority sweep jumps the queue, so the 125 ms review signal is never delayed by
+bulk polling — on a full 15-game slate the bulk `playByPlay` polls are paced instead of
+being dropped. The live rate against the ceiling is drawn in the Latency & API budget
+panel.
 
 To *see and hear* the ⚠️ Runs at Risk surfaces without waiting for a live review,
 run the offline, fixture-driven render test — it stubs the API with the exact same
@@ -466,11 +533,16 @@ GitHub Actions**.
   no requests to MLB's API. The Replay Feed scans live games'
   playByPlay (the light, `fields`-projected endpoint — no boxscore/rosters)
   every 250ms, subtracts scan time from the next wait, fetches in-review games
-  first, and only re-renders when a review event actually changes. Worst case
-  on a full ~15-game slate that is ~60 playByPlay requests/s plus ~4 tiny
-  status sweeps/s (~68 req/s, single client, since the sweep went 250ms → 125ms)
-  — far below "thousands of requests per second", and the same cadence the page
-  already used whenever any review was in flight. The 1s post-Final tier adds
+  first, and only re-renders when a review event actually changes. A **request
+  governor** caps concurrency at 6, spaces request starts by 25 ms, dedupes
+  identical in-flight URLs and enforces a **sustained ceiling of 40 requests/s**
+  (plus a small burst allowance), so the request count is bounded no matter how
+  many games are live. Worst case
+  on a full ~15-game slate that is ~60 playByPlay requests/s plus ~8 tiny
+  status sweeps/s — which the governor paces down to the 40 req/s ceiling
+  (the high-priority sweep jumps the queue, so review detection is never the
+  thing that gets delayed) — and the full slate is fetched only every 5 s,
+  because the 125 ms sweep is the authority on status. The 1s post-Final tier adds
   ~70 requests per finished game
   across its 30-minute grace (~292 total, up from ~220) — bounded, and only for
   games that have just gone final. The StatsAPI is

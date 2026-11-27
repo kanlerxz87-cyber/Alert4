@@ -36,6 +36,39 @@ active for this repo) is preserved byte-for-byte at
 >
 > **Merge 3 — `9572372b` merges `origin/main` (PR #6, `2a4d504` — `fd8d4cdb`'s post-merge record) into `arena/9572372b-alert4`**: merged cleanly with the `ort` strategy, zero conflicts, nothing lost. This brought in **`fd8d4cdb`'s Final integration record** (appended verbatim at the end of this file): PR #1 merged 2026-11-25T20:52:16Z as `102f9c4`, Pages `built` for that commit, the post-merge delivery run succeeded byte-for-byte, and the live site was verified (reference feed rows, game view, 2027-04-06 schedule, flagged page §1–15) — plus **COPY-8** (a transient snapshot-count difference on the live feed, re-checked against the official play-by-play, flagged unverified) and **`docs/copy-verification.md` §5**. `flagged.html` §15 gained their COPY-8 row; this branch's section was unchanged at that point (later renumbered §16 → §17 in merge 4).
 
+### Replay-feed session — `36b30ab0` (branch `arena/36b30ab0-alert4`)
+
+> ## REPLAY FEED SESSION (2026-11-27) — latency, alert sound, live state, separate scoring log
+>
+> **Session ID:** `36b30ab0` (branch fixed by Arena to `arena/36b30ab0-alert4`, from `main` @ `3e53419`).
+>
+> **Brief:** work on the replay feed that monitors and alerts on all current / ongoing / live MLB games —
+> (1) fastest feed and latency for in-game play-by-play, challenges, manager challenges, reviews, umpire
+> reviews, official-scoring pending, and scoring changes, within MLB API TOS; (2) a pleasant all-day alert
+> sound (~3 s raindrop), toggleable, firing for every alerted event; (3) live capture of the official game
+> state to the second (score, pitch count, outs, pitcher, batter) with exact official before/after wording,
+> populating the replay feed for every game; (4) a **separate** persistent log of official scoring pending +
+> scoring changes, independent of the alert system.
+>
+> | Task | Status | File scope | Notes |
+> |---|---|---|---|
+> | RF-1 Isolated alert sound (3 s raindrop), toggle + volume + test | done | `assets/js/alert-sound.js` (new), `assets/css/style.css`, `reviews.html` | Own Web Audio graph; `mlbp.pref.sound` / `mlbp.pref.soundVolume`; kinds review/risk/pending/scoring/abs/live/preview; 1.5 s cooldown; `test()` always plays |
+> | RF-2 Live game-state capture, to the second | done | `assets/js/game-state.js` (new), `assets/js/reviews-feed.js` | Pure module: `capturePlay`/`captureFeed`/`snapshotAll`/`beforeAfterForPlay`/`formatState`/`stateKey`/`diffStates`; inning, score, count, outs, batter, pitcher, pitch count, runners, official description, `HH:MM:SS` |
+> | RF-3 Before/after official wording on every alerted row | done | `assets/js/reviews-feed.js`, `assets/css/style.css` | Rows carry `beforeState`/`afterState` + `observedAtSec`; quoted official wording in `.official-wording` / `.before-after` |
+> | RF-4 Live Game State section (all games) | done | `reviews.html`, `assets/js/reviews-feed.js` | One card per game; latest official state + captured-at second |
+> | RF-5 Separate Official Scoring Log (pending + scoring changes) | done | `assets/js/scoring-log.js` (new), `assets/js/reviews-feed.js`, `reviews.html`, `assets/css/style.css` | Own keys `mlbp.scoringlog.<date>` (30 dates), own SSE, own JSON/CSV export + clear; never plays sound; independent of the alert path |
+> | RF-6 Server persistence for the scoring log | done | `server.mjs` | `GET`/`POST /api/scoring-log`, `GET /api/scoring-log/stream` (SSE), `data/scoring-log-<date>.json` + `scoring-log-index.json`; idempotent merge by id (earliest `firstSeen`, latest `lastSeen`); separate from the feed-log store |
+> | RF-7 Latency work + TOS budget | done | `assets/js/api.js`, `assets/js/reviews-feed.js` | Governor: 6 concurrent, 25 ms spacing, in-flight dedupe, high-priority sweep jumps the queue, 429 `Retry-After` honoured (1 s–5 min, backoff ×8), **sustained ceiling 40 req/s** with burst allowance; per-game 250 ms phase-staggered polls, counters every 5 s, full slate cached 5 s (the 125 ms lean sweep is the status authority); latency last/p50/p95 + live rate vs ceiling in the UI |
+> | RF-8 Latency & API budget panel | done | `reviews.html`, `assets/js/reviews-feed.js`, `assets/css/style.css` | Badge + panel: last/p50/p95, requests, cached/deduped, rate vs ceiling, governor state, 429 countdown |
+>
+> **Verification (this session, on the merged tree):** `node --check` on every `assets/js/*.js` and `server.mjs` — OK ·
+> `node tests/run-all.mjs` — **PASS** (syntax, link-check 60 refs, contract-check 8 bindings, jsdom-render 47/47) ·
+> `node tools/smoke-test.mjs` — **64 passed, 0 failed** (includes G-3 chime checks: new review / pending / scoring-change rows chime, routine ABS stays silent, runs-at-risk chimes once) ·
+> server end-to-end: `GET/POST /api/scoring-log` + `GET /api/scoring-log/stream` (SSE frame delivered to a connected client, payload persisted to `data/scoring-log-<date>.json`, re-POST merged idempotently, no duplicate) ·
+> `GET /api/health` reports `feedLogClients`/`scoringLogClients`.
+>
+> **Honest limits:** the sandbox egress cannot reach `statsapi.mlb.com` (only github/npm/pypi hosts are allowed), so the live-StatsAPI behaviour of the new capture paths was exercised against fixture payloads shaped like the real responses, not against the live API. `docs/api-compliance.md` is still not part of this upload (F-003) — the request-rate reasoning above is recorded in `README.md` §"Latency and the API budget" instead.
+
 ### Copy session — `9572372b` (branch `arena/9572372b-alert4`, PR [#2](https://github.com/kanlerxz87-cyber/Alert4/pull/2))
 
 > ## COPY SESSION (2026-11-25) — repo `kanlerxz87-cyber/Alert4`

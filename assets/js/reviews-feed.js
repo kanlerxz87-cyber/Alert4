@@ -10,9 +10,21 @@
  *   - official-scorer pending rulings (os_ruling_pending_*)
  *   - official scoring changes, detected by diffing each completed play's
  *     classification between polls
+ *   - official live game state for every game (score, count, outs, batter,
+ *     pitcher, pitch count, bases, inning — timestamped to the second),
+ *     with exact official wording before/after every alerted event
+ *
+ * Latency: the 125 ms lean status sweep is the fastest signal that a review
+ * was called; play-by-play uses the lean /playByPlay projection, staggered
+ * per game, through the api.js governor (concurrency 6, dedupe, 429-aware).
+ * Counters are fetched on a slower cadence than play-by-play.
  *
  * Every tracked entry is persisted through feed-log.js (localStorage + the
- * optional server store) and restored on the next visit.
+ * optional server store) and restored on the next visit. Official scoring
+ * pending + scoring changes are ALSO persisted through scoring-log.js — a
+ * separate system (own keys + own /api/scoring-log endpoints) that never
+ * plays sound and never depends on the alert system. The alert sound itself
+ * lives in alert-sound.js (isolated 3-second raindrop chime, toggle + test).
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -21,11 +33,18 @@
   var UI = global.UI;
   var Reviews = global.Reviews;
   var FeedLog = global.FeedLog;
+  var AlertSound = global.AlertSound || null;
+  var GameState = global.GameState || null;
+  var ScoringLog = global.ScoringLog || null;
 
   var SCAN_MS = 250;
+  var LIVE_SCAN_MS = 250;
+  var REVIEW_SCAN_MS = 250;
   var STATUS_SWEEP_MS = 125;
   var FETCH_CONCURRENCY = 6;
   var FINAL_GRACE_MS = 30 * 60 * 1000;
+  var COUNTERS_MS = 5000;
+  var SCHEDULE_TTL_MS = 5000;
   var SOUND_COOLDOWN_MS = 2500;
 
   var PLAYBYPLAY_FIELDS = 'allPlays,about,atBatIndex,hasReview,isComplete,inning,halfInning,isTopInning,isScoringPlay,' +
@@ -68,9 +87,21 @@
     nextScanAt: 0,
     lastRenderSignature: '',
     counterCache: Object.create(null),
+    counterDue: Object.create(null),
+    /* Freshest status per game, written by the 125 ms lean sweep. */
+    liveStatusByPk: Object.create(null),
     absFetchedRevCount: Object.create(null),
     lastGameDate: undefined,
     lookingForRecent: false,
+    /* Live game-state capture (game-state.js): latest state per game +
+     * bounded history of every observed state change, timestamped to the
+     * second. Populates the Live Game State section + before/after rows. */
+    gameStates: Object.create(null),
+    stateHistory: [],
+    lastStateKey: Object.create(null),
+    /* Separate persistent scoring log (scoring-log.js). */
+    scoringLog: null,
+    sweepInFlight: false,
   };
 
   function $(id) { return document.getElementById(id); }
@@ -169,6 +200,30 @@
     state.log.irregularities = state.irregularities;
     state.log.savedAt = Date.now();
     FeedLog.save(state.date, state.log);
+    /* The scoring log persists independently (own keys/endpoints). */
+    if (ScoringLog && state.scoringLog) {
+      state.scoringLog.savedAt = Date.now();
+      ScoringLog.save(state.date, state.scoringLog);
+    }
+  }
+
+  /* Append one pending/scoring-change entry to the SEPARATE persistent
+   * scoring log. Never plays sound, never touches the alert feed — if this
+   * fails the alert still fired, and if the alert is muted this still logs. */
+  function appendScoringLog(entry) {
+    if (!ScoringLog || !entry || !entry.id) return;
+    if (!state.scoringLog) state.scoringLog = ScoringLog.emptyPayload(state.date);
+    var exists = state.scoringLog.entries.some(function (e) { return e && e.id === entry.id; });
+    if (exists) return;
+    entry.firstSeen = Date.now();
+    entry.lastSeen = Date.now();
+    state.scoringLog.entries.push(entry);
+    if (state.scoringLog.entries.length > ScoringLog.MAX_ENTRIES) {
+      state.scoringLog.entries = state.scoringLog.entries.slice(-ScoringLog.MAX_ENTRIES);
+    }
+    state.scoringLog.order = state.scoringLog.entries.map(ScoringLog.entryKey);
+    ScoringLog.save(state.date, state.scoringLog);
+    renderScoringLog();
   }
 
   function adoptLog(log) {
@@ -218,19 +273,59 @@
     return 15000;
   }
 
+  /* The freshest status we know for a game. The 125 ms lean sweep is the
+   * authority (it sees Live -> Final and review flips within 125 ms); the
+   * scheduled slate is only a slower fallback. */
+  function statusOf(game) {
+    var live = state.liveStatusByPk[game.gamePk];
+    if (live) return live.abstractGameState || '';
+    return (game.status && game.status.abstractGameState) || '';
+  }
+
+  function detailedStatusOf(game) {
+    var live = state.liveStatusByPk[game.gamePk];
+    if (live) return live.detailedState || live.abstractGameState || '';
+    return (game.status && game.status.detailedState) || (game.status && game.status.abstractGameState) || '';
+  }
+
+  /* Per-game poll phase. Each game is polled once per `interval` ms, but its
+   * polls sit on a fixed phase derived from the gamePk, so a 15-game slate
+   * spreads its requests evenly across the interval instead of bursting on
+   * every scan. The average rate per game is unchanged; only the phase
+   * differs, so no game's alert is delayed by the stagger. */
+  function dueAt(pk, now, interval) {
+    var phase = Number(pk) % interval;
+    var due = phase + Math.ceil((now - phase) / interval) * interval;
+    if (due <= now) due += interval;
+    return due;
+  }
+
   function shouldFetch(game, now) {
-    var status = (game.status && game.status.abstractGameState) || '';
+    var status = statusOf(game);
     var pk = game.gamePk;
     if (status === 'Live') {
-      state.nextDue[pk] = now + SCAN_MS;
+      /* Stagger live games so a 15-game slate does not burst: review games
+       * poll at REVIEW_SCAN_MS, others at LIVE_SCAN_MS. The 125 ms status
+       * sweep still catches a new review out of band. */
+      var inReview = !!(state.statusByPk[pk] && state.statusByPk[pk] !== '');
+      var interval = inReview ? REVIEW_SCAN_MS : LIVE_SCAN_MS;
+      var due = state.nextDue[pk] || 0;
+      if (!due) {
+        /* First time we see this game: give it a phase slot so a 15-game
+         * slate does not fire 15 requests in the same tick. */
+        state.nextDue[pk] = now + (Number(pk) % interval);
+        return false;
+      }
+      if (now < due) return false;
+      state.nextDue[pk] = dueAt(pk, now, interval);
       return true;
     }
     if (status === 'Final') {
       if (!state.finalSeen[pk]) state.finalSeen[pk] = now;
       var elapsed = now - state.finalSeen[pk];
       if (elapsed > FINAL_GRACE_MS) return false;
-      var due = state.nextDue[pk] || 0;
-      if (now < due) return false;
+      var dueFinal = state.nextDue[pk] || 0;
+      if (now < dueFinal) return false;
       state.nextDue[pk] = now + finalGraceDelay(state.finalSeen[pk], elapsed);
       return true;
     }
@@ -238,12 +333,18 @@
   }
 
   function fetchGame(game) {
-    var prevCount = state.absFetchedRevCount[game.gamePk];
-    var status = (game.status && game.status.abstractGameState) || '';
+    var now = Date.now();
+    var status = statusOf(game);
     var pbpPromise = MLB.playByPlay(game.gamePk, { fields: PLAYBYPLAY_FIELDS, retries: 0 });
-    var countersPromise = (prevCount === undefined || status === 'Live')
+    /* Counters (manager/ABS remaining) change rarely: fetch them at most
+     * every COUNTERS_MS per game, plus immediately when a review flips the
+     * status sweep. This keeps the per-poll payload small and the request
+     * rate inside the TOS budget without losing counter freshness. */
+    var countersDue = (state.counterDue[game.gamePk] || 0) <= now;
+    var countersPromise = countersDue
       ? MLB.gameFeed(game.gamePk, { fields: COUNTERS_FIELDS, retries: 0 }).catch(function () { return null; })
       : Promise.resolve(null);
+    if (countersDue) state.counterDue[game.gamePk] = now + COUNTERS_MS;
     return Promise.all([pbpPromise, countersPromise])
       .then(function (parts) {
         return { game: game, payload: parts[0], countersPayload: parts[1] };
@@ -286,7 +387,27 @@
     var game = result.game;
     var plays = Reviews.playsOf(result.payload);
     var teams = teamsOf(game);
-    var meta = { gamePk: game.gamePk, teams: teams, feed: result.payload };
+    var matchupLabel = UI.abbr(teams.away) + ' @ ' + UI.abbr(teams.home);
+    var meta = { gamePk: game.gamePk, teams: teams, feed: result.payload, matchupLabel: matchupLabel };
+    var observedAt = new Date();
+
+    /* ---- official live game state (every game, every poll) ----
+     * Capture the latest state for this game (score, count, outs, batter,
+     * pitcher, pitch count, bases, inning — timestamped to the second) and
+     * append to the bounded history when the official state actually
+     * changed. This populates the Live Game State section and gives every
+     * alerted event its exact before/after wording. */
+    if (GameState && plays.length) {
+      var latestPlay = plays[plays.length - 1];
+      var latestState = GameState.capturePlay(latestPlay, result.payload, meta, observedAt);
+      state.gameStates[game.gamePk] = latestState;
+      var key = GameState.stateKey(latestState);
+      if (state.lastStateKey[game.gamePk] !== key) {
+        state.lastStateKey[game.gamePk] = key;
+        state.stateHistory.push(latestState);
+        if (state.stateHistory.length > 500) state.stateHistory = state.stateHistory.slice(-500);
+      }
+    }
 
     /* ---- reviews */
     var reviews = Reviews.extractReviews(plays, meta);
@@ -320,14 +441,23 @@
         scoreTracker.possible[review.battingSide] = Math.max(0, scoreTracker.possible[review.battingSide] - review.runsAtRiskCount);
       }
 
+      /* Exact official before/after state for this review (game-state.js). */
+      var ba = (GameState && typeof GameState.beforeAfterForPlay === 'function')
+        ? GameState.beforeAfterForPlay(plays, review.atBatIndex, result.payload, meta, observedAt)
+        : { before: null, after: null };
+
       var entry = {
         id: review.id,
         kind: 'review',
         gamePk: game.gamePk,
-        matchupLabel: UI.abbr(teams.away) + ' @ ' + UI.abbr(teams.home),
+        matchupLabel: matchupLabel,
         teams: teams,
         review: review,
         scoreTracker: scoreTracker,
+        beforeState: ba.before,
+        afterState: ba.after,
+        observedAt: observedAt.toISOString(),
+        observedAtSec: GameState ? GameState.stamp(observedAt).sec : observedAt.toLocaleTimeString(),
         firstSeenLabel: MLB.formatGameTime(game.gameDate),
       };
 
@@ -336,11 +466,13 @@
        * existing object, so flags like `warned` live there. */
       entry = state.entries.find(function (e) { return e.id === entry.id; }) || entry;
 
-      /* Uploaded reviews.html button title (aef1a74c L39): "a gentle raindrop
-       * chime for new challenges/reviews/boundary calls, official-scorer
-       * pending rulings and official scoring changes (not ABS), and the same
-       * chime whenever an active review could remove a run already on the
-       * scoreboard". */
+      /* Every alert-feed event chimes through the isolated alert-sound
+       * module: challenges, reviews, boundary calls, pending rulings,
+       * scoring changes and runs-at-risk. Routine ABS pitch challenges are
+       * tracked in the ABS tab/counters but stay silent (they happen many
+       * times per game — an all-day chime for each would be unlistenable);
+       * an ABS challenge that could remove a run still chimes via the
+       * runs-at-risk path below. */
       if (isNew && !review.isABS) chime('review');
       if (review.runsAtRiskCount > 0 && !entry.warned) {
         /* "whenever an active review could remove a run" — chime the moment
@@ -353,16 +485,26 @@
       }
     });
 
-    /* ---- official-scorer pending rulings */
+    /* ---- official-scorer pending rulings ----
+     * Logged to BOTH the alert feed (with sound) and the separate persistent
+     * scoring log (no sound, survives refresh). The two systems are
+     * independent: either can fail without affecting the other. */
     var pending = Reviews.pendingRulings(plays, meta);
     pending.forEach(function (row) {
+      var baPending = (GameState && typeof GameState.beforeAfterForPlay === 'function')
+        ? GameState.beforeAfterForPlay(plays, row.atBatIndex, result.payload, meta, observedAt)
+        : { before: null, after: null };
       var isNewPending = upsertEntry({
         id: row.id,
         kind: 'pending',
         gamePk: game.gamePk,
-        matchupLabel: UI.abbr(teams.away) + ' @ ' + UI.abbr(teams.home),
+        matchupLabel: matchupLabel,
         teams: teams,
         pending: row,
+        beforeState: baPending.before,
+        afterState: baPending.after,
+        observedAt: observedAt.toISOString(),
+        observedAtSec: GameState ? GameState.stamp(observedAt).sec : observedAt.toLocaleTimeString(),
         review: {
           typeLabel: 'Official Scorer Ruling Pending',
           reason: row.eventType === 'os_ruling_pending_primary' ? 'Primary event ruling pending' : 'Prior event ruling pending',
@@ -377,7 +519,26 @@
           family: 'pending',
         },
       });
-      if (isNewPending) chime('pending');
+      if (isNewPending) {
+        chime('pending');
+        appendScoringLog({
+          id: row.id,
+          kind: 'pending',
+          gamePk: game.gamePk,
+          matchupLabel: matchupLabel,
+          observedAt: observedAt.toISOString(),
+          observedAtSec: GameState ? GameState.stamp(observedAt).sec : observedAt.toLocaleTimeString(),
+          observedMs: observedAt.getTime(),
+          inningLabel: row.inningLabel,
+          batter: row.batter,
+          pitcher: row.pitcher,
+          before: baPending.before || { description: '', eventType: '' },
+          after: baPending.after || { description: row.description, eventType: row.eventType },
+          descriptionBefore: baPending.before ? baPending.before.description : '',
+          descriptionAfter: row.description,
+          source: row.source || 'GET /api/v1/eventTypes — os_ruling_pending_*',
+        });
+      }
     });
 
     /* ---- official scoring changes */
@@ -387,13 +548,20 @@
     state.snapshots[game.gamePk] = snapshot;
 
     diff.changes.forEach(function (change) {
+      var baChange = (GameState && typeof GameState.beforeAfterForPlay === 'function')
+        ? GameState.beforeAfterForPlay(plays, change.atBatIndex, result.payload, meta, observedAt)
+        : { before: null, after: null };
       var isNewChange = upsertEntry({
         id: game.gamePk + ':' + change.atBatIndex + ':scoring-change',
         kind: 'scoring_change',
         gamePk: game.gamePk,
-        matchupLabel: UI.abbr(teams.away) + ' @ ' + UI.abbr(teams.home),
+        matchupLabel: matchupLabel,
         teams: teams,
         change: change,
+        beforeState: baChange.before,
+        afterState: baChange.after,
+        observedAt: observedAt.toISOString(),
+        observedAtSec: GameState ? GameState.stamp(observedAt).sec : observedAt.toLocaleTimeString(),
         review: {
           typeLabel: 'Official Scoring Change',
           reason: '',
@@ -408,7 +576,35 @@
           family: 'scoring',
         },
       });
-      if (isNewChange) chime('scoring');
+      if (isNewChange) {
+        chime('scoring');
+        appendScoringLog({
+          id: game.gamePk + ':' + change.atBatIndex + ':scoring-change',
+          kind: 'scoring_change',
+          gamePk: game.gamePk,
+          matchupLabel: matchupLabel,
+          observedAt: observedAt.toISOString(),
+          observedAtSec: GameState ? GameState.stamp(observedAt).sec : observedAt.toLocaleTimeString(),
+          observedMs: observedAt.getTime(),
+          inningLabel: change.inningLabel,
+          batter: change.batter,
+          pitcher: '',
+          before: {
+            description: change.from.description || '',
+            eventType: change.from.eventType || '',
+            score: change.from.awayScore !== null && change.from.homeScore !== null
+              ? { away: change.from.awayScore, home: change.from.homeScore } : null,
+          },
+          after: {
+            description: change.to.description || '',
+            eventType: change.to.eventType || '',
+            score: change.scoreAfter || null,
+          },
+          descriptionBefore: change.from.description || '',
+          descriptionAfter: change.to.description || '',
+          source: change.attribution || 'Official scorer / Elias / club review',
+        });
+      }
       if (state.log) {
         state.log.grace = state.log.grace || {};
         state.log.grace[game.gamePk] = Date.now();
@@ -458,7 +654,11 @@
     state.scanning = true;
     state.nextScanAt = Date.now() + SCAN_MS;
 
-    MLB.schedule(scanDate, { ttl: 0, retries: 0 })
+    /* The full slate is cached for SCHEDULE_TTL_MS: team/venue/order data
+     * does not change, and the 125 ms lean sweep is the fast authority on
+     * status. This removes ~4 requests/s from the budget without making
+     * any alert later. */
+    MLB.schedule(scanDate, { ttl: SCHEDULE_TTL_MS, retries: 0 })
       .then(function (payload) {
         if (scanSeq !== state.dateSeq || scanDate !== state.date) return null;
         state.games = flattenGames(payload);
@@ -501,23 +701,40 @@
     state.timers.scan = setTimeout(scan, delay);
   }
 
-  /* 125 ms official status sweep: catches a review the moment MLB flips it. */
+  /* 125 ms official status sweep: catches a review the moment MLB flips it.
+   * In-flight guarded so a slow network cannot stack sweeps; the api.js
+   * governor gives this call high priority ahead of bulk playByPlay polls. */
   function sweep() {
-    if (document.hidden) return;
+    if (document.hidden || state.sweepInFlight) return;
     var sweepSeq = state.dateSeq;
     var sweepDate = state.date;
-    if (!state.games.some(function (g) { return g.status && g.status.abstractGameState === 'Live'; })) return;
+    if (!state.games.some(function (g) { return statusOf(g) === 'Live'; })) return;
+    state.sweepInFlight = true;
     MLB.slateStatus(sweepDate).then(function (payload) {
+      state.sweepInFlight = false;
       if (sweepSeq !== state.dateSeq || sweepDate !== state.date) return;
       var games = flattenGames(payload);
       games.forEach(function (g) {
+        /* The lean sweep is the fast authority on status: record it so the
+         * Live -> Final transition and the "In Progress"/"Final" labels are
+         * current within 125 ms even though the full slate is cached. */
+        var abs = (g.status && g.status.abstractGameState) || '';
+        if (abs) {
+          state.liveStatusByPk[g.gamePk] = {
+            abstractGameState: abs,
+            detailedState: (g.status && g.status.detailedState) || abs,
+          };
+        }
         var review = Reviews.statusReview(g.status);
         var prev = state.statusByPk[g.gamePk];
         var nextKey = review ? review.code + '|' + review.reason : '';
         if (prev !== nextKey) {
           state.statusByPk[g.gamePk] = nextKey;
           if (review) {
-            /* Out-of-band fetch: don't wait for the current scan to finish. */
+            /* Out-of-band fetch: don't wait for the current scan to finish.
+             * Force a fresh counters fetch so the remaining-challenges
+             * counter on the new row is current. */
+            state.counterDue[g.gamePk] = 0;
             fetchGame(g).then(function (result) {
               if (sweepSeq !== state.dateSeq || sweepDate !== state.date) return;
               ingestGame(result, sweepSeq, sweepDate);
@@ -528,59 +745,40 @@
           }
         }
       });
-    }).catch(function () { /* the scan owns error reporting */ });
+    }).catch(function () {
+      state.sweepInFlight = false;
+      /* the scan owns error reporting */
+    });
   }
 
-  /* ------------------------------------------------------------- sound/notify */
-
-  var audioCtx = null;
+  /* ------------------------------------------------------------- sound/notify
+   * The alert sound lives in the isolated alert-sound.js module (3-second
+   * raindrop chime). This bridge only forwards events; it never synthesizes
+   * audio itself, so sound changes cannot break the feed and feed changes
+   * cannot break the sound. */
 
   function chime(reason) {
     if (!state.soundOn) return;
     var now = Date.now();
-    if (now - state.lastChimeAt < SOUND_COOLDOWN_MS) return;
+    if (now - state.lastChimeAt < SOUND_COOLDOWN_MS && reason !== 'preview') return;
     state.lastChimeAt = now;
-    try {
-      var Ctx = global.AudioContext || global.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
-      var t0 = audioCtx.currentTime;
-      var master = audioCtx.createGain();
-      master.gain.value = 0.0001;
-      master.connect(audioCtx.destination);
-      master.gain.exponentialRampToValueAtTime(0.22, t0 + 0.05);
-      master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.5);
+    if (AlertSound) {
+      try {
+        /* Keep the isolated module in step without a preview chime: the
+         * feed's toggle is the source of truth, AlertSound just renders. */
+        if (AlertSound.state) AlertSound.state.enabled = true;
+        AlertSound.play(reason || 'review');
+      } catch (e) { /* never a failure path */ }
+      return;
+    }
+    /* Fallback if alert-sound.js failed to load: silent no-op. */
+  }
 
-      var echo = audioCtx.createDelay(0.5);
-      echo.delayTime.value = 0.22;
-      var echoGain = audioCtx.createGain();
-      echoGain.gain.value = 0.28;
-      master.connect(echo);
-      echo.connect(echoGain);
-      echoGain.connect(audioCtx.destination);
-
-      function drop(at, freq, dur) {
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, at);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.9, at + dur);
-        gain.gain.setValueAtTime(0.0001, at);
-        gain.gain.exponentialRampToValueAtTime(0.6, at + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(at);
-        osc.stop(at + dur + 0.05);
-      }
-
-      drop(t0 + 0.0, 1180, 0.18);
-      drop(t0 + 0.16, 880, 0.22);
-      drop(t0 + 0.34, 1320, 0.3);
-      drop(t0 + 0.52, 660, 0.7);
-      drop(t0 + 0.58, 990, 0.7);
-    } catch (e) { /* audio is a nicety, never a failure path */ }
+  function testSound() {
+    if (AlertSound) {
+      try { AlertSound.test(); } catch (e) { /* ignore */ }
+    }
+    statusLine('🔔 Test sound played — 3-second raindrop chime (toggle Sound On to hear alerts for every feed event).');
   }
 
   function notifyRunAtRisk(review, teams) {
@@ -716,6 +914,138 @@
     return '<dt>' + UI.esc(label) + '</dt><dd>' + UI.esc(score.away) + '–' + UI.esc(score.home) + '</dd>';
   }
 
+  function beforeAfterHtml(entry) {
+    var before = entry.beforeState;
+    var after = entry.afterState;
+    if (!before && !after) return '';
+    function line(label, s) {
+      if (!s) return '<div class="feed-sub">' + UI.esc(label) + ': — (not observed)</div>';
+      var bits = [];
+      if (s.inningLabel) bits.push(s.inningLabel);
+      if (s.score) bits.push(s.score.away + '–' + s.score.home);
+      if (s.count && s.count.balls !== null && s.count.strikes !== null) {
+        bits.push(s.count.balls + '-' + s.count.strikes + (s.count.outs !== null ? ' · ' + s.count.outs + ' out' + (s.count.outs === 1 ? '' : 's') : ''));
+      }
+      if (s.batter && s.batter.name) bits.push(s.batter.name + ' vs ' + (s.pitcher && s.pitcher.name ? s.pitcher.name : '—'));
+      if (s.pitchCount) bits.push(s.pitchCount + ' pitch' + (s.pitchCount === 1 ? '' : 'es'));
+      if (s.observedAtSec) bits.push('@ ' + s.observedAtSec);
+      return '<div class="feed-sub"><b>' + UI.esc(label) + ':</b> ' + UI.esc(bits.join(' · ')) +
+        (s.description ? '<br><span class="official-wording">“' + UI.esc(s.description) + '”</span>' : '') + '</div>';
+    }
+    return '<div class="before-after">' + line('Before', before) + line('After', after) + '</div>';
+  }
+
+  function renderLiveState() {
+    var el = $('live-state-list');
+    var statusEl = $('live-state-status');
+    if (!el) return;
+    var pks = Object.keys(state.gameStates);
+    if (!state.games.length && !pks.length) {
+      el.innerHTML = '<div class="feed-empty">No games on this date yet. Live state (score, count, outs, batter, pitcher, pitch count) appears here the second each game starts.</div>';
+      if (statusEl) statusEl.textContent = 'Waiting for games…';
+      return;
+    }
+    /* Show every game on the slate, even before its first playByPlay lands. */
+    var cards = state.games.map(function (g) {
+      var s = state.gameStates[g.gamePk];
+      var label = UI.abbr(teamsOf(g).away) + ' @ ' + UI.abbr(teamsOf(g).home);
+      var status = statusOf(g);
+      var detailed = detailedStatusOf(g) || status;
+      if (!s) {
+        return '<div class="live-state-card">' +
+          '<div class="live-state-head"><a href="game.html?gamePk=' + encodeURIComponent(g.gamePk) + '&date=' + encodeURIComponent(state.date) + '"><b>' + UI.esc(label) + '</b></a>' +
+          UI.chip(detailed, status === 'Live' ? 'chip-danger' : '') + '</div>' +
+          '<div class="feed-sub">State capture pending — first playByPlay poll in flight…</div></div>';
+      }
+      var countText = (s.count && s.count.balls !== null && s.count.strikes !== null)
+        ? s.count.balls + '-' + s.count.strikes + (s.count.outs !== null ? ' · ' + s.count.outs + ' out' + (s.count.outs === 1 ? '' : 's') : '')
+        : '—';
+      return '<div class="live-state-card' + (status === 'Live' ? ' is-live' : '') + '">' +
+        '<div class="live-state-head"><a href="game.html?gamePk=' + encodeURIComponent(g.gamePk) + '&date=' + encodeURIComponent(state.date) + '"><b>' + UI.esc(label) + '</b></a>' +
+        '<span class="live-state-score">' + (s.score ? UI.esc(s.score.away) + '–' + UI.esc(s.score.home) : '—') + '</span>' +
+        UI.chip(detailed, status === 'Live' ? 'chip-danger' : '') + '</div>' +
+        '<dl class="state-kv">' +
+          '<dt>Inning</dt><dd>' + UI.esc(s.inningLabel || '—') + '</dd>' +
+          '<dt>Count</dt><dd>' + UI.esc(countText) + '</dd>' +
+          '<dt>Batter</dt><dd>' + UI.esc((s.batter && s.batter.name) || '—') + '</dd>' +
+          '<dt>Pitcher</dt><dd>' + UI.esc((s.pitcher && s.pitcher.name) || '—') + '</dd>' +
+          '<dt>Pitches (PA)</dt><dd>' + (s.pitchCount !== null && s.pitchCount !== undefined ? s.pitchCount : '—') + '</dd>' +
+          '<dt>Captured</dt><dd>' + UI.esc(s.observedAtSec || '') + '</dd>' +
+        '</dl>' +
+        (s.description ? '<div class="feed-sub official-wording">“' + UI.esc(s.description) + '”</div>' : '') +
+      '</div>';
+    }).join('');
+    el.innerHTML = cards;
+    if (statusEl) {
+      var live = state.games.filter(function (g) { return statusOf(g) === 'Live'; }).length;
+      statusEl.textContent = state.games.length + ' game(s) · ' + live + ' live · state captured ' +
+        new Date(state.lastScanAt || Date.now()).toLocaleTimeString();
+    }
+  }
+
+  function renderScoringLog() {
+    var el = $('scoring-log-list');
+    var countEl = $('scoring-log-count');
+    var statusEl = $('scoring-log-status');
+    if (!el) return;
+    var entries = (state.scoringLog && state.scoringLog.entries) || [];
+    if (countEl) countEl.textContent = entries.length + ' entr' + (entries.length === 1 ? 'y' : 'ies') + ' logged';
+    if (statusEl) {
+      var saved = ScoringLog && ScoringLog.state && ScoringLog.state.available ? ' · shared log connected' : ' · local log only (survives refresh)';
+      statusEl.textContent = 'Separate persistent log · survives refresh' + saved;
+    }
+    if (!entries.length) {
+      el.innerHTML = '<div class="feed-empty">No official-scorer pending rulings or scoring changes observed yet for this date. They are captured here in real time and kept after a refresh.</div>';
+      return;
+    }
+    var sorted = entries.slice().sort(function (a, b) { return (Number(b.observedMs) || 0) - (Number(a.observedMs) || 0); });
+    el.innerHTML = sorted.map(function (e) {
+      var before = e.before || {};
+      var after = e.after || {};
+      var scoreBefore = before.score ? before.score.away + '–' + before.score.home : '—';
+      var scoreAfter = after.score ? after.score.away + '–' + after.score.home : '—';
+      return '<div class="scoring-row">' +
+        '<div class="scoring-head"><b>' + UI.esc(e.matchupLabel || '') + '</b>' +
+        UI.chip(e.kind === 'pending' ? '📝 Pending ruling' : '✏️ Scoring change', e.kind === 'pending' ? 'chip-warn' : 'chip-scoring') +
+        '<span>' + UI.esc(e.inningLabel || '') + '</span>' +
+        '<span class="timestamp">' + UI.esc(e.observedAtSec || '') + '</span>' +
+        '<a href="game.html?gamePk=' + encodeURIComponent(e.gamePk) + '&date=' + encodeURIComponent(state.date) + '">Game ↗</a></div>' +
+        '<div class="feed-sub">' + UI.esc(e.batter || '') + (e.pitcher ? ' vs ' + UI.esc(e.pitcher) : '') + '</div>' +
+        '<dl class="score-track">' +
+          '<dt>Before (official)</dt><dd>' + UI.esc(before.description || e.descriptionBefore || '—') + ' · ' + UI.esc(scoreBefore) + '</dd>' +
+          '<dt>After (official)</dt><dd>' + UI.esc(after.description || e.descriptionAfter || '—') + ' · ' + UI.esc(scoreAfter) + '</dd>' +
+        '</dl>' +
+        '<div class="feed-irregular">Source: ' + UI.esc(e.source || '') + '</div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderLatency() {
+    var badge = $('latency-badge');
+    var details = $('latency-details');
+    if (!MLB.perf) return;
+    var p = MLB.perf();
+    if (badge) {
+      badge.textContent = p.lastLatencyMs ? (p.lastLatencyMs + ' ms · p50 ' + p.p50LatencyMs + ' ms') : '— ms';
+      badge.classList.toggle('is-quiet', p.quietRemainingMs > 0);
+    }
+    if (details) {
+      var rps = p.requestsPerSecond || 0;
+      var ceiling = p.rateLimitRps || 0;
+      var overCeiling = ceiling && rps > ceiling;
+      details.innerHTML =
+        '<span><b>Last</b> ' + p.lastLatencyMs + ' ms</span>' +
+        '<span><b>p50</b> ' + p.p50LatencyMs + ' ms</span>' +
+        '<span><b>p95</b> ' + p.p95LatencyMs + ' ms</span>' +
+        '<span><b>Requests</b> ' + p.requests + ' (' + p.cacheHits + ' cached · ' + p.deduped + ' deduped)</span>' +
+        '<span><b>Rate</b> ' + rps + ' req/s' + (ceiling ? ' · ceiling ' + ceiling + ' req/s' : '') + '</span>' +
+        '<span><b>Governor</b> ' + p.active + '/' + p.maxConcurrent + ' concurrent · ' + p.minIntervalMs + ' ms spacing</span>' +
+        (p.quietRemainingMs > 0 ? '<span class="is-quiet">⏸ 429 quiet: ' + Math.ceil(p.quietRemainingMs / 1000) + 's remaining</span>'
+          : (overCeiling ? '<span class="is-quiet">⚠️ Above sustained ceiling — backing off</span>'
+            : '<span>✅ Within TOS budget</span>'));
+    }
+  }
+
   function renderRow(entry) {
     var r = entry.review || {};
     var tracker = entry.scoreTracker || {};
@@ -801,6 +1131,7 @@
       return false;
     });
 
+    var stampText = entry.observedAtSec || new Date(entry.lastSeen || Date.now()).toLocaleTimeString();
     return '<div class="' + cls + '">' +
       '<div class="feed-avatar">' + avatar + '</div>' +
       '<div class="feed-body">' +
@@ -809,13 +1140,14 @@
           '<span>' + UI.esc(r.inningLabel || '') + '</span>' +
           (r.challengerSide && r.challengerSide !== 'unknown' && r.challenger
             ? '<span>Challenged by ' + UI.esc(r.challenger) + (r.challengerRole ? ' (' + UI.esc(r.challengerRole) + ')' : '') + '</span>' : '') +
-          '<span>' + new Date(entry.lastSeen || Date.now()).toLocaleTimeString() + '</span>' +
+          '<span class="timestamp" title="Observed at (local, to the second)">' + UI.esc(stampText) + '</span>' +
           '<a href="https://statsapi.mlb.com/api/v1/game/' + encodeURIComponent(entry.gamePk) + '/playByPlay" target="_blank" rel="noopener" title="Official MLB StatsAPI play-by-play source">MLB API ↗</a>' +
         '</div>' +
         '<div class="feed-title">' + UI.esc((r.batter && r.batter.name) || '') +
           (r.pitcher && r.pitcher.name ? ' vs ' + UI.esc(r.pitcher.name) : '') + '</div>' +
-        (r.description ? '<div class="feed-sub">' + UI.esc(r.description) + '</div>' : '') +
+        (r.description ? '<div class="feed-sub official-wording">“' + UI.esc(r.description) + '”</div>' : '') +
         absLine + changeHtml + pendingHtml +
+        beforeAfterHtml(entry) +
         (trackerHtml ? trackerHtml : '') +
         (counterText ? '<div class="counter-note"' + (counterSummaryTitle ? ' title="' + UI.esc(counterSummaryTitle) + '"' : '') + '>' + UI.esc(counterText) + '</div>' : '') +
         (irregularity ? '<div class="feed-irregular">⚠️ ' + UI.esc(irregularity) + '</div>' : '') +
@@ -851,7 +1183,13 @@
   }
 
   function entriesSignature() {
-    return state.filter + '|' + state.games.length + '|' + (state.lastGameDate || '') + '|' + state.entries.map(function (e) {
+    var statePart = Object.keys(state.gameStates).map(function (pk) {
+      var s = state.gameStates[pk];
+      return pk + ':' + (s && s.observedAtSec) + ':' + (s && s.score ? s.score.away + '-' + s.score.home : '') +
+        ':' + (s && s.description ? s.description.slice(0, 40) : '');
+    }).join('|');
+    var scoringPart = state.scoringLog ? state.scoringLog.entries.length : 0;
+    return state.filter + '|' + state.games.length + '|' + (state.lastGameDate || '') + '|' + scoringPart + '|' + statePart + '|' + state.entries.map(function (e) {
       return [e.id, e.lastSeen, e.review && e.review.outcome, e.review && e.review.inProgress,
         e.scoreTracker && e.scoreTracker.actual ? e.scoreTracker.actual.away + '-' + e.scoreTracker.actual.home : '',
         e.scoreTracker && e.scoreTracker.before ? e.scoreTracker.before.away + '-' + e.scoreTracker.before.home : ''].join(':');
@@ -888,6 +1226,9 @@
     renderTabs();
     renderStats();
     renderActiveStrip();
+    renderLiveState();
+    renderScoringLog();
+    renderLatency();
     var list = $('feed-list');
     if (!list) return;
     var rows = visibleEntries();
@@ -932,13 +1273,19 @@
     }
     var dot = $('live-dot');
     if (dot) dot.style.opacity = state.scanError ? '0.3' : '1';
+    renderLatency();
     if (state.scanError) {
       statusLine('Scan problem: ' + (state.scanError.message || 'network error') + ' — retrying.', true);
     } else {
-      var live = state.games.filter(function (g) { return g.status && g.status.abstractGameState === 'Live'; }).length;
+      var live = state.games.filter(function (g) { return statusOf(g) === 'Live'; }).length;
+      var perfText = '';
+      if (MLB.perf) {
+        var p = MLB.perf();
+        perfText = ' · latency ' + p.lastLatencyMs + ' ms (p50 ' + p.p50LatencyMs + ' ms)';
+      }
       statusLine(state.games.length + ' game(s) on ' + MLB.formatDateLabel(state.date) +
         ' · ' + live + ' live · ' + state.entries.length + ' tracked entr' + (state.entries.length === 1 ? 'y' : 'ies') +
-        ' · scanned ' + new Date(state.lastScanAt || Date.now()).toLocaleTimeString() +
+        ' · scanned ' + new Date(state.lastScanAt || Date.now()).toLocaleTimeString() + perfText +
         (FeedLog.state.available ? ' · shared log connected' : ' · local log only'));
     }
   }
@@ -960,8 +1307,14 @@
     state.finalSeen = Object.create(null);
     state.nextDue = Object.create(null);
     state.statusByPk = Object.create(null);
+    state.liveStatusByPk = Object.create(null);
     state.counterCache = Object.create(null);
+    state.counterDue = Object.create(null);
     state.absFetchedRevCount = Object.create(null);
+    state.gameStates = Object.create(null);
+    state.stateHistory = [];
+    state.lastStateKey = Object.create(null);
+    state.scoringLog = null;
     state.lastGameDate = undefined;
     state.lookingForRecent = false;
     state.log = null;
@@ -969,11 +1322,16 @@
     syncNav();
     render();
     FeedLog.closeStream();
-    FeedLog.load(clean).then(function (log) {
+    if (ScoringLog) ScoringLog.closeStream();
+    var feedPromise = FeedLog.load(clean);
+    var scoringPromise = ScoringLog ? ScoringLog.load(clean) : Promise.resolve(null);
+    Promise.all([feedPromise, scoringPromise]).then(function (parts) {
       if (seq !== state.dateSeq || state.date !== clean) return;
-      adoptLog(log);
+      adoptLog(parts[0]);
+      if (ScoringLog) state.scoringLog = parts[1] || ScoringLog.emptyPayload(clean);
       render();
       FeedLog.openStream(clean);
+      if (ScoringLog) ScoringLog.openStream(clean);
       scan();
     });
   }
@@ -983,12 +1341,21 @@
   function toggleSound() {
     state.soundOn = !state.soundOn;
     savePref('sound', state.soundOn);
+    if (AlertSound) {
+      try { AlertSound.setEnabled(state.soundOn); } catch (e) { /* ignore */ }
+    }
     var btn = $('sound-toggle-btn');
     if (btn) {
       btn.textContent = state.soundOn ? '🔊 Sound On' : '🔇 Sound Off';
       btn.classList.toggle('btn-on', state.soundOn);
     }
-    if (state.soundOn) chime('preview');
+    /* setEnabled already plays the 3s preview when switched on. */
+  }
+
+  function setVolume(v) {
+    if (AlertSound) {
+      try { AlertSound.setVolume(v); } catch (e) { /* ignore */ }
+    }
   }
 
   function toggleNotify() {
@@ -1009,6 +1376,10 @@
     state.date = urlDate() || parseDate();
     syncNav();
     state.soundOn = loadPref('sound', false);
+    if (AlertSound) {
+      /* AlertSound owns its own pref; keep the feed's copy in step. */
+      try { state.soundOn = AlertSound.isEnabled(); } catch (e) { /* keep loaded */ }
+    }
     state.notifyOn = loadPref('notify', false);
 
     FeedLog.onChange(function (pushed) {
@@ -1018,11 +1389,27 @@
       }
     });
 
+    if (ScoringLog) {
+      ScoringLog.onChange(function (pushed) {
+        if (pushed && pushed.date === state.date) {
+          state.scoringLog = ScoringLog.mergePayloads(state.scoringLog, pushed, state.date);
+          renderScoringLog();
+        }
+      });
+    }
+
     var soundBtn = $('sound-toggle-btn');
     if (soundBtn) {
       soundBtn.textContent = state.soundOn ? '🔊 Sound On' : '🔇 Sound Off';
       soundBtn.classList.toggle('btn-on', state.soundOn);
       soundBtn.addEventListener('click', toggleSound);
+    }
+    var testBtn = $('sound-test-btn');
+    if (testBtn) testBtn.addEventListener('click', testSound);
+    var vol = $('sound-volume');
+    if (vol) {
+      try { vol.value = String(Math.round((AlertSound ? AlertSound.getVolume() : 0.5) * 100)); } catch (e) { /* ignore */ }
+      vol.addEventListener('input', function () { setVolume(Number(vol.value) / 100); });
     }
     var notifyBtn = $('notify-toggle-btn');
     if (notifyBtn) {
@@ -1032,6 +1419,23 @@
     }
     var refreshBtn = $('refresh-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', function () { scan(); });
+
+    var exportJson = $('scoring-export-json');
+    if (exportJson) exportJson.addEventListener('click', function () {
+      if (ScoringLog && state.scoringLog) ScoringLog.exportJSON(state.scoringLog);
+    });
+    var exportCsv = $('scoring-export-csv');
+    if (exportCsv) exportCsv.addEventListener('click', function () {
+      if (ScoringLog && state.scoringLog) ScoringLog.exportCSV(state.scoringLog);
+    });
+    var clearBtn = $('scoring-clear');
+    if (clearBtn) clearBtn.addEventListener('click', function () {
+      if (ScoringLog) {
+        state.scoringLog = ScoringLog.clear(state.date);
+        renderScoringLog();
+        statusLine('Scoring log cleared for ' + MLB.formatDateLabel(state.date) + ' (local copy).');
+      }
+    });
 
     var tabs = $('feed-tabs');
     if (tabs) {
@@ -1049,11 +1453,15 @@
 
     var initSeq = state.dateSeq;
     var initDate = state.date;
-    FeedLog.load(initDate).then(function (log) {
+    var feedPromise = FeedLog.load(initDate);
+    var scoringPromise = ScoringLog ? ScoringLog.load(initDate) : Promise.resolve(null);
+    Promise.all([feedPromise, scoringPromise]).then(function (parts) {
       if (initSeq !== state.dateSeq || state.date !== initDate) return;
-      adoptLog(log);
+      adoptLog(parts[0]);
+      if (ScoringLog) state.scoringLog = parts[1] || ScoringLog.emptyPayload(initDate);
       render();
       FeedLog.openStream(initDate);
+      if (ScoringLog) ScoringLog.openStream(initDate);
       scan();
     });
 
@@ -1076,12 +1484,17 @@
     setDate: setDate,
     setFilter: setFilter,
     toggleSound: toggleSound,
+    testSound: testSound,
+    setVolume: setVolume,
     toggleNotify: toggleNotify,
     scan: scan,
     state: state,
     SCAN_MS: SCAN_MS,
+    LIVE_SCAN_MS: LIVE_SCAN_MS,
+    REVIEW_SCAN_MS: REVIEW_SCAN_MS,
     STATUS_SWEEP_MS: STATUS_SWEEP_MS,
     FETCH_CONCURRENCY: FETCH_CONCURRENCY,
+    COUNTERS_MS: COUNTERS_MS,
   };
 
   if (document.readyState === 'loading') {

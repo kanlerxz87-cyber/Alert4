@@ -185,6 +185,14 @@
       (title ? ' title="' + esc(title) + '"' : '') + '>' + esc(text) + '</span>';
   }
 
+  /* Local wall-clock time with second precision ("02:41:17 PM") — used by the
+   * game-state timeline and the scoring monitor, per the capture spec. */
+  function formatTimestampSeconds(ts) {
+    var d = ts instanceof Date ? ts : new Date(Number(ts));
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  }
+
   global.UI = {
     LOGO_BASE: LOGO_BASE,
     TEAM_ABBR: TEAM_ABBR,
@@ -202,5 +210,6 @@
     occupancyFromLinescore: occupancyFromLinescore,
     statusMeta: statusMeta,
     chip: chip,
+    formatTimestampSeconds: formatTimestampSeconds,
   };
 }(window));

@@ -430,3 +430,85 @@ Most recent date with games: Wed Oct 28, 2026"),
   truth for data values; every flagged/unverified item stays published on the Flagged for Review page
   with its source links (§§1–17). Unverified items are non-blocking and none were silently corrected.
 - Post-merge record itself delivered as a follow-up PR from `arena/9572372b-alert4` (linked in the PR list).
+
+---
+
+## Session `bc0024f5` — live official state, official Scoring Monitor, Δ-feed, alert sound (2026-11-27, branch `arena/bc0024f5-alert4`)
+
+> ### LIVE GAME-STATE + SCORING MONITOR SESSION (2026-11-27)
+>
+> **Brief (unchanged from the task):** the Replay Feed must carry (1) the fastest
+> legal ingest path for live game data and official-scoring updates, (2) a pleasant
+> ~3-second sound that toggles and fires for **every** event in the feed, (3) live,
+> second-precision full game state captured for **every** game on the slate — before /
+> during / after each game, and (4) official scoring pending rulings and scoring
+> changes in a **separate, refresh-persistent** section that never disrupts the alert
+> system.
+>
+> ### What was built
+>
+> - **Δ-feed fast path** (`assets/js/json-patch.js`, `assets/js/live-diff.js`, wired into
+>   `assets/js/reviews-feed.js`): per-live-game polling of MLB's official
+>   `feed/live/timestamps` + `feed/live/diffPatch` (RFC 6902) against the cached
+>   full feed held in memory; unchanged games cost ~KB per 750 ms poll; after 3
+>   consecutive patch failures the game silently re-syncs once and returns to the
+>   standard `fields`-projected play-by-play poll. The undocumented Gameday
+>   websocket is deliberately not used (reasons in `docs/latency-and-tos.md`).
+> - **Failure isolation**: the alert pipeline writes to `feed-log.js` only, exactly
+>   as before. Official-scoring rows go through `scoring-monitor.js` →
+>   `scoring-log.js` (`mlbp.scoringlog.<date>` + `/api/scoring-log` +
+>   `data/scoring-log-<date>.json`), game-state rows through `state-tracker.js` →
+>   `state-log.js` (`mlbp.statelog.<date>` + `/api/state-log`). Both new logs use a
+>   shared `persistent-log.js` factory (union-by-id merge; recorded rulings never
+>   revert; earliest `before` / latest `after` wording kept; capped `history`
+>   chain of every reclassification). Server-side stores and SSE in `server.mjs`.
+> - **`scoring.html`** — the Official Scoring Monitor: stats tiles, All / ⏳ Pending /
+>   ✅ Resolved / ✏️ Scoring changes tabs, `?date=` deep link, one-click JSON export,
+>   separation banner (never chimes, never notifies, never blocks alerts), linked as
+>   "📝 Scoring Monitor" next to the Replay Feed on `reviews.html`, `game.html`,
+>   `index.html`.
+> - **📈 Game State tab** on the Replay Feed: preview → game start → pitch-by-pitch
+>   (official call text, number, count, outs) → pitching changes → official score
+>   changes → final (status wording, final score, decisions) — second precision.
+> - **~3s alert sound** for every event kind (challenges, reviews, boundary calls,
+>   ABS, scoring changes, pending rulings, runs-at-risk): seeded noise bed + 13
+>   pentatonic drops + feedback delay + G4 close ≈ 2.9s, 3s cooldown, toggle
+>   (`#sound-toggle-btn`) retained.
+>
+> ### Verified (this session)
+>
+> - `node tests/run-all.mjs` — syntax · link-check · contract-check · jsdom-render
+>   **60/60** (incl. 13 new checks covering `scoring.html` with a seeded log) ·
+>   live-diff **22/22** (engine vs a real captured diffPatch response for game
+>   824638, 2026-08-28) · scoring-monitor **16/16** (incl. persistence round-trip
+>   and history-chain preservation) — ALL PASS.
+> - `node tools/smoke-test.mjs` (CI's `npm test`) — **64/64**; its G-3 ABS-chime
+>   expectation was updated to the new brief: sound now fires for every event
+>   kind, ABS included.
+> - Server round-trip: `POST /api/scoring-log` (pending row) → `POST` same id with a
+>   `pending_resolved` row → `GET` returns merged row with earliest `before`,
+>   latest `after`, `history` intact → `GET /api/scoring-log/stream?date=` and
+>   `/api/state-log/stream?date=` both emit `connected` + snapshot frames
+>   (`event: scoring-log` / `state-log`); union of two POSTed dates' entries kept.
+>   Test files removed afterwards; `data/` is git-ignored.
+> - `node --check` on every new/modified script; jsdom test extended to cover
+>   `scoring.html` (seeded log → rows/tiles/tabs/?date= export button, no uncaught
+>   errors — 13 new checks).
+>
+> ### Flagged, not hidden (see `flagged.html` §18)
+>
+> - LS-1: Δ-feed engine verified vs captured bytes; sustained live behavior during
+>   a real game not observed this session.
+> - LS-3: scoring capture verified offline; zero pending-ruling plays exist in the
+>   2026-11-27 fixtures, so a live pending → resolved transition is unobserved.
+> - LS-5: pleasantness of the rain is subjective.
+> - LS-6: cross-browser persistence is impossible on static Pages (no backend);
+>   localStorage-only degradation documented.
+>
+> ### Files touched
+>
+> New: `scoring.html`, `assets/js/{scoring-page,scoring-monitor,scoring-log,state-tracker,state-log,persistent-log,json-patch,live-diff}.js`,
+> `tests/{live-diff-test,scoring-monitor-test}.mjs`, `docs/latency-and-tos.md`.
+> Modified: `assets/js/{reviews-feed,reviews,state-tracker,persistent-log,ui,api}.js` (via earlier work), `reviews.html`, `index.html`, `game.html`, `assets/css/style.css`,
+> `server.mjs`, `tests/run-all.mjs`, `tests/jsdom-render-test.mjs`, `tests/contract-check.mjs`, `README.md`, `flagged.html`.
+

@@ -1242,6 +1242,78 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
       <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
     </p>
+    <h2 id="section-18">18. Live game-state capture, official Scoring Monitor, Δ-feed &amp; the alert sound (session <code>bc0024f5</code>, 2026-11-27)</h2>
+    <p>
+      The Replay Feed gained three capabilities this session. Everything below is
+      either verified against the official StatsAPI fixtures in
+      <a href="tests/fixtures/">tests/fixtures/</a> or explicitly flagged — nothing
+      is claimed beyond what was checked.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Item</th><th>What the sources say</th><th>What the site does</th><th>Source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>LS-1</td>
+          <td class="wrap">Δ-feed fast path — MLB publishes <code>feed/live/timestamps</code> and <code>feed/live/diffPatch?startTimecode&amp;endTimecode</code> (RFC 6902). The swagger describes exactly this poll-then-patch flow; the websocket at <code>ws.statsapi.mlb.com</code> is undocumented.</td>
+          <td class="wrap">The official delta mechanism is first-party and documented. The 750&nbsp;ms poll of a few-KB timecode list replaces re-downloading the multi-MB feed; payload moves only on revision. After 3 failures the fast path re-syncs once and returns to the standard play-by-play poll.</td>
+          <td class="wrap">Implemented in <code>assets/js/live-diff.js</code> + <code>assets/js/json-patch.js</code>, wired into <code>assets/js/reviews-feed.js</code>. <strong>Verified against a real captured diffPatch response</strong> (game 824638, 2026-08-28: <code>timeStamp</code> replace, <code>add</code> into <code>logicalEvents/3</code>, cross-type <code>copy</code> into <code>runnerIndex</code>, innings <code>hits</code> replace) in <code>tests/live-diff-test.mjs</code> — 22/22 pass.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1.1/game/824638/feed/live/timestamps" target="_blank" rel="noopener">timestamps (v1.1)</a> · <a href="https://statsapi.mlb.com/api/v1.1/game/824638/feed/live/diffPatch?startTimecode=20260828_203856&amp;endTimecode=20260828_203907" target="_blank" rel="noopener">diffPatch (v1.1)</a> · <code>tests/live-diff-test.mjs</code></td>
+          <td class="status-flag">Engine verified against captured bytes; sustained live behavior during a real game not observed in this session — flagged</td>
+        </tr>
+        <tr>
+          <td>LS-2</td>
+          <td class="wrap">The undocumented Gameday websocket (<code>wss://ws.statsapi.mlb.com/api/v1/game/push/subscribe/gameday/{gamePk}</code>).</td>
+          <td class="wrap">Not part of the documented public API; no published Origin rules, close codes, or authorization. Relying on it would build alerts on unsupported infrastructure.</td>
+          <td class="wrap">Deliberately not used. <code>docs/latency-and-tos.md</code> records the decision and the <code>Retry-After</code>/429 handling, the per-surface request budget, and the TOS bounds the site honors.</td>
+          <td class="wrap"><a href="docs/latency-and-tos.md">docs/latency-and-tos.md</a></td>
+          <td class="status-ok">Fixed — documented, rejected with reasons</td>
+        </tr>
+        <tr>
+          <td>LS-3</td>
+          <td class="wrap">Official scoring pending rulings (<code>result.eventType</code> = <code>os_ruling_pending_primary|prior</code>): MLB shows the play as undecided and rewrites it once the scorer publishes.</td>
+          <td class="wrap">Wording before/after is payload-verbatim; transitions are detected by diffing consecutive completed-play classifications — <strong>there is no scoring-change marker in the payload</strong>, so reclassification detection is inferential, as documented in <code>assets/js/scoring-monitor.js</code>.</td>
+          <td class="wrap">Captured by <code>assets/js/scoring-monitor.js</code> into the separate <code>scoring-log</code> namespace (its own localStorage keys + <code>/api/scoring-log</code> + <code>data/scoring-log-&lt;date&gt;.json</code>), rendered by the new <code>scoring.html</code> Official Scoring Monitor. Before keeps the earliest observed call; after keeps the latest; every step is appended to a capped <code>history</code> chain, so intermediate rulings survive. Sound never fires there; the alert feed (✏️ Scoring Changes tab) is untouched and independent.</td>
+          <td class="wrap"><code>tests/scoring-monitor-test.mjs</code> (16/16, incl. persistence round-trip) · <code>tests/jsdom-render-test.mjs</code> (47/47)</td>
+          <td class="status-flag">Engine verified offline; a live pending → resolved transition was not observable in the captured 2026-11-27 fixtures (zero pending plays in the captures) — flagged; will confirm on the next game day with a real pending ruling</td>
+        </tr>
+        <tr>
+          <td>LS-4</td>
+          <td class="wrap">Game-state timeline for every game on the slate (preview → final), timestamped to the second.</td>
+          <td class="wrap">Everything is payload-verbatim: official status wording/codes, play calls, counts, outs, runners, score, decisions when the schedule carries them. Fields absent from a payload (e.g. runner occupancy on the standard play-by-play path) are omitted, never guessed.</td>
+          <td class="wrap"><code>assets/js/state-tracker.js</code> → separate <code>state-log</code> namespace (localStorage + <code>/api/state-log</code>, cap 2000/date), rendered in the Replay Feed's 📈 Game State tab. Survives refresh; union-by-id merge.</td>
+          <td class="wrap"><code>tests/scoring-monitor-test.mjs</code> §state (score change before → after, pitch rows, final capture) · <code>server.mjs</code> round-trip check (POST → GET → SSE snapshot)</td>
+          <td class="status-ok">Fixed — captured, persisted, merged</td>
+        </tr>
+        <tr>
+          <td>LS-5</td>
+          <td class="wrap">The alert sound: previously a ~1.2s raindrop chime restricted to challenges/reviews (ABS pitch challenges excluded).</td>
+          <td class="wrap">Not applicable (presentation). The brief: a pleasant ~3s sound for <em>every</em> event in the feed, toggleable.</td>
+          <td class="wrap">Now a ~3s seeded rain shower (filtered-noise bed + hand-placed pentatonic drops + feedback delay + G4 close, master ramp 0→0.24→decay ≈2.9s), one graph for every event kind — challenges, reviews, boundary calls, ABS, scoring changes, pending rulings, runs-at-risk — behind the existing 🔊 toggle (off by default). 3s cooldown keeps cycles non-overlapping.</td>
+          <td class="wrap"><a href="reviews.html">reviews.html</a> (sound toggle title documents coverage) · <code>assets/js/reviews-feed.js</code></td>
+          <td class="status-flag">Pleasantness is subjective and unverifiable in CI — listen to it live and adjust <code>RAIN_DROPS</code> or the master gain to taste</td>
+        </tr>
+        <tr>
+          <td>LS-6</td>
+          <td class="wrap">GitHub Pages has no server; <code>localStorage</code> is per-browser.</td>
+          <td class="wrap">Cross-browser persistence requires a server. Static hosting cannot provide it; pretending otherwise would mislead.</td>
+          <td class="wrap">The three logs degrade to per-browser localStorage on Pages and to shared, SSE-pushed disk logs under <code>node server.mjs</code> (same-origin <code>EventSource</code>). The alert log's behavior is unchanged. Documented in <code>docs/latency-and-tos.md</code> §4.</td>
+          <td class="wrap"><a href="docs/latency-and-tos.md">docs/latency-and-tos.md</a> §4 · <code>server.mjs</code></td>
+          <td class="status-flag">Accepted limitation, documented — unchanged behavior on Pages</td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      Checks run this session: <code>node tests/run-all.mjs</code> (syntax · link-check · contract-check ·
+      jsdom-render 47/47 · live-diff 22/22 · scoring-monitor 16/16 — ALL PASS) ·
+      <code>node tools/smoke-test.mjs</code> is superseded by the jsdom render test above ·
+      <code>curl</code> round-trip of <code>/api/scoring-log</code> + <code>/api/state-log</code>
+      (POST → GET merge → SSE snapshot frame) all on port 8000/8123, then the test data files removed.
+      The capture <code>before</code>/<code>after</code> wording for a real pending→resolved transition is
+      exercised only against fixtures shaped from official payloads; no live pending ruling has been
+      observed or captured yet.
+    </p>
   </main>
 
   <footer class="site-footer">

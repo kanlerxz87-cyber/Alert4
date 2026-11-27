@@ -28,6 +28,7 @@
       <span class="brand-sub">replay feed · all games</span>
     </div>
     <a class="btn btn-ghost" href="index.html">← Scoreboard</a>
+    <a class="btn btn-ghost" href="scoring.html" title="Permanent log of official-scorer pending rulings and scoring changes — kept separate from alerts">📝 Scoring Monitor</a>
     <div class="date-nav">
       <button class="btn btn-ghost" onclick="ReplayFeed.prevDay()" title="Previous day">←</button>
       <input type="date" id="date-picker" onchange="ReplayFeed.pickDate()" aria-label="Game date">
@@ -36,7 +37,7 @@
     </div>
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
-      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle the alert sound — a gentle ~3 second rain sequence for every event in this feed: challenges, umpire/crew-chief reviews, boundary calls, ABS pitch challenges, official-scorer pending rulings and official scoring changes, plus the same rain whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
@@ -101,7 +102,22 @@
       finals are re-scanned for 30 minutes after they end (at most every 30 seconds) to catch
       rulings published after the game. Payload edits without a reclassification (description /
       RBI / score only) and plays that vanish from the payload are flagged as irregularities for
-      review, never corrected or hidden.
+      review, never corrected or hidden. Official-scoring pending rulings and scoring changes are
+      additionally mirrored to the <a href="scoring.html">📝 Official Scoring Monitor</a> — a
+      separate, permanent section with its own log (mlbp.scoringlog.* / /api/scoring-log), fully
+      independent of the alert system: it never chimes and a failure there cannot disrupt alerts.
+      Game state is captured live for every game on the slate — preview (scheduled start and
+      official probable pitchers), first pitch, every pitch (pitcher, official pitch number,
+      official call text, count, outs), pitching changes, score changes with the scoring play's
+      official description, and the Final with official decisions when the schedule payload carries
+      them — all timestamped to the second and persisted separately (mlbp.statelog.* /
+      /api/state-log); the timeline renders under the <strong>📈 Game State</strong> tab and the
+      key events (first pitch, score changes, Final) also appear in All. Live games are tracked
+      through the official delta feed (MLB's own per-game timestamps + RFC 6902 diffPatch applied
+      to a cached feed/live document, the same mechanism the Gameday client uses) with automatic
+      fall-back to standard play-by-play polling; nothing here uses the undocumented Gameday
+      websocket. See <a href="docs/latency-and-tos.md" target="_blank" rel="noopener">docs/latency-and-tos.md</a>
+      for the full latency budget and the MLB StatsAPI terms-of-service bounds this site honors.
       Every tracked entry is also logged to this browser (one log per date, newest seven dates
       kept, 500 most-recent rows) so a refresh or a later visit restores the feed rows, the
       scoring baselines and the flagged irregularities before the first scan runs; the log holds
@@ -116,6 +132,13 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/json-patch.js"></script>
+  <script src="assets/js/live-diff.js"></script>
+  <script src="assets/js/persistent-log.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
+  <script src="assets/js/state-log.js"></script>
+  <script src="assets/js/scoring-monitor.js"></script>
+  <script src="assets/js/state-tracker.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

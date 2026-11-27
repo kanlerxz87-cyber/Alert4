@@ -10,9 +10,22 @@
  *   - official-scorer pending rulings (os_ruling_pending_*)
  *   - official scoring changes, detected by diffing each completed play's
  *     classification between polls
+ *   - LIVE GAME STATE for every game on the slate (preview → first pitch →
+ *     pitch-by-pitch → final), captured second-precision by state-tracker.js
  *
- * Every tracked entry is persisted through feed-log.js (localStorage + the
- * optional server store) and restored on the next visit.
+ * Latency: live games are tracked through the official delta feed — MLB's own
+ * timestamps + diffPatch (RFC 6902) over the cached feed/live document — so
+ * changes are detected within one 750 ms poll *without* re-downloading the
+ * multi-MB feed. On any patch failure the fast path re-syncs, and after
+ * MAX_FAILURES failures the game silently returns to standard playByPlay
+ * polling. The slate status sweep is 500 ms. The undocumented Gameday
+ * websocket is deliberately NOT used (see docs/latency-and-tos.md).
+ *
+ * Persistence: alert entries go through feed-log.js (localStorage + the
+ * optional server store) exactly as before. Game-state rows persist through
+ * state-log.js (separate namespace + /api/state-log), official-scoring
+ * entries through scoring-log.js via scoring-monitor.js — so scoring/state
+ * capture can never evict or corrupt the alert log.
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -21,14 +34,22 @@
   var UI = global.UI;
   var Reviews = global.Reviews;
   var FeedLog = global.FeedLog;
+  var LiveDiff = global.LiveDiff;
+  var StateTracker = global.StateTracker;
+  var StateLog = global.StateLog;
+  var ScoringMonitor = global.ScoringMonitor;
 
-  var SCAN_MS = 250;
-  var STATUS_SWEEP_MS = 125;
+  /* Latency budget (see docs/latency-and-tos.md): live games are detected via
+   * the diffPatch fast path at one 750 ms poll; the slate sweep re-checks
+   * statuses every 500 ms. Both are far below the cost of re-fetching full
+   * play-by-play at the old 250/125 ms cadence, and comfortably bounded. */
+  var SCAN_MS = 750;
+  var STATUS_SWEEP_MS = 500;
   var FETCH_CONCURRENCY = 6;
   var FINAL_GRACE_MS = 30 * 60 * 1000;
-  var SOUND_COOLDOWN_MS = 2500;
+  var SOUND_COOLDOWN_MS = 3000;  /* the rain falls for ~3s; keep cycles non-overlapping */
 
-  var PLAYBYPLAY_FIELDS = 'allPlays,about,atBatIndex,hasReview,isComplete,inning,halfInning,isTopInning,isScoringPlay,' +
+  var PLAYBYPLAY_FIELDS = 'allPlays,currentPlay,about,atBatIndex,hasReview,isComplete,inning,halfInning,isTopInning,isScoringPlay,' +
     'result,eventType,description,isOut,rbi,awayScore,homeScore,count,balls,strikes,outs,matchup,batter,id,fullName,pitcher,' +
     'playEvents,details,call,reviewDetails,isOverturned,inProgress,reviewType,challengeTeamId,runners,' +
     'isScoringEvent,playIndex,movement,index,isPitch,pitchNumber,type,startTime,endTime,hasOutcome';
@@ -44,6 +65,7 @@
     { id: 'under', label: 'Under Review' },
     { id: 'risk', label: '⚠️ Runs at Risk' },
     { id: 'scoring', label: '✏️ Scoring Changes' },
+    { id: 'state', label: '📈 Game State' },
   ];
 
   var state = {
@@ -69,6 +91,7 @@
     lastRenderSignature: '',
     counterCache: Object.create(null),
     absFetchedRevCount: Object.create(null),
+    diffTrackers: Object.create(null),
     lastGameDate: undefined,
     lookingForRecent: false,
   };
@@ -237,7 +260,29 @@
     return false;
   }
 
-  function fetchGame(game) {
+  /* ---- diffPatch fast path --------------------------------------------
+   * For live games, poll the small timecode list; only when the game feed was
+   * revised do we fetch the RFC 6902 delta and apply it to the cached feed in
+   * memory. No changes -> no payload download at all beyond ~a few KB. Any
+   * failure keeps the old base and counts against the failure budget; after
+   * LiveDiff.MAX_FAILURES failures the game is polled the standard way. */
+  function latestTimecode(list) {
+    if (!Array.isArray(list) || !list.length) return null;
+    for (var i = list.length - 1; i >= 0; i -= 1) {
+      if (typeof list[i] === 'string' && list[i]) return list[i];
+    }
+    return null;
+  }
+
+  function diffTrack(game) {
+    if (!LiveDiff) return null;
+    var pk = game.gamePk;
+    if (!state.diffTrackers[pk]) state.diffTrackers[pk] = LiveDiff.create(pk);
+    return state.diffTrackers[pk];
+  }
+
+  /* Standard path: full projected playByPlay (+ counters feed when needed). */
+  function standardFetch(game) {
     var prevCount = state.absFetchedRevCount[game.gamePk];
     var status = (game.status && game.status.abstractGameState) || '';
     var pbpPromise = MLB.playByPlay(game.gamePk, { fields: PLAYBYPLAY_FIELDS, retries: 0 });
@@ -246,11 +291,72 @@
       : Promise.resolve(null);
     return Promise.all([pbpPromise, countersPromise])
       .then(function (parts) {
-        return { game: game, payload: parts[0], countersPayload: parts[1] };
+        return { game: game, payload: parts[0], countersPayload: parts[1], via: 'playByPlay' };
       })
       .catch(function (err) {
         return { game: game, payload: null, countersPayload: null, error: err };
       });
+  }
+
+  function deltaFetch(game) {
+    var tracker = diffTrack(game);
+    if (!tracker || tracker.disabled) return Promise.resolve(null);
+    var pk = game.gamePk;
+    return MLB.gameFeedTimecodes(pk, { retries: 0 }).then(function (list) {
+      var latest = latestTimecode(list);
+      if (!latest) return null; /* unintelligible timecode list — fall back */
+
+      /* Base feed missing or stale-and-empty: fetch it once. */
+      if (!tracker.base) {
+        return MLB.gameFeed(pk, { retries: 1 }).then(function (feed) {
+          if (!LiveDiff.isFullFeed(feed)) throw new Error('full feed response not recognized');
+          LiveDiff.adoptFullFeed(tracker, feed, latest);
+          /* If the feed we got is older than the timecode list (a revision
+           * landed while downloading), pull the delta to catch up. */
+          if (tracker.timecode && latest !== tracker.timecode) {
+            return MLB.gameFeedDiffPatch(pk, tracker.timecode, latest, { retries: 0 }).then(function (patchJson) {
+              LiveDiff.applyPatch(tracker, patchJson, latest);
+              return wrapDeltaResult(game, tracker.base);
+            });
+          }
+          return wrapDeltaResult(game, tracker.base);
+        });
+      }
+
+      /* Nothing revised since our base: reuse it. Zero payload download. */
+      if (latest === tracker.timecode) {
+        return wrapDeltaResult(game, tracker.base);
+      }
+
+      return MLB.gameFeedDiffPatch(pk, tracker.timecode, latest, { retries: 0 }).then(function (patchJson) {
+        var applied = LiveDiff.applyPatch(tracker, patchJson, latest);
+        return wrapDeltaResult(game, applied.doc);
+      });
+    }).catch(function (err) {
+      LiveDiff.noteFailure(tracker, err);
+      if (tracker.disabled) {
+        noteIrregularity(pk, 'diffPatch fast path disabled for ' + pk + ' after ' + LiveDiff.MAX_FAILURES +
+          ' failures (' + (tracker.disabledReason || 'patch error') + ') — using standard play-by-play polling.');
+      }
+      /* fall back to the standard path for this scan */
+      return standardFetch(game);
+    });
+  }
+
+  function wrapDeltaResult(game, payload) {
+    var countersPayload = payload && payload.gameData ? { gameData: payload.gameData } : null;
+    return { game: game, payload: payload, countersPayload: countersPayload, via: 'diffPatch' };
+  }
+
+  function fetchGame(game) {
+    var status = (game.status && game.status.abstractGameState) || '';
+    if (status === 'Live') {
+      return deltaFetch(game).then(function (result) {
+        if (result) return result;
+        return standardFetch(game);
+      });
+    }
+    return standardFetch(game);
   }
 
   function runLimited(items, limit, worker) {
@@ -286,7 +392,44 @@
     var game = result.game;
     var plays = Reviews.playsOf(result.payload);
     var teams = teamsOf(game);
+    var matchupLabel = UI.abbr(teams.away) + ' @ ' + UI.abbr(teams.home);
     var meta = { gamePk: game.gamePk, teams: teams, feed: result.payload };
+
+    /* ---- isolated capture hooks (scoring monitor + game-state timeline) */
+    /* These write to SEPARATE persistence (scoring-log / state-log). They are
+     * wrapped so a failure here can never disrupt the alert pipeline. */
+    var captureDate = state.date;
+    try {
+      var earlySnapshot = Reviews.snapshotPlays(plays);
+      var earlyPrevious = state.snapshots[game.gamePk];
+      var earlyDiffForMonitor = Reviews.diffSnapshots(earlyPrevious, earlySnapshot);
+      if (global.ScoringMonitor) {
+        global.ScoringMonitor.observe({
+          date: captureDate,
+          gamePk: game.gamePk,
+          teams: teams,
+          teamsAbbr: { away: { abbr: UI.abbr(teams.away) }, home: { abbr: UI.abbr(teams.home) } },
+          plays: plays,
+          diff: earlyDiffForMonitor,
+          pending: Reviews.pendingRulings(plays, meta),
+        });
+      }
+    } catch (e) {
+      global.console && global.console.warn && global.console.warn('[scoring-monitor] capture failed (alerts unaffected):', e);
+    }
+    try {
+      if (global.StateTracker) {
+        global.StateTracker.observe({
+          date: captureDate,
+          game: game,
+          payload: result.payload,
+          teams: teams,
+          matchupLabel: matchupLabel,
+        });
+      }
+    } catch (e) {
+      global.console && global.console.warn && global.console.warn('[state-tracker] capture failed (alerts unaffected):', e);
+    }
 
     /* ---- reviews */
     var reviews = Reviews.extractReviews(plays, meta);
@@ -336,12 +479,10 @@
        * existing object, so flags like `warned` live there. */
       entry = state.entries.find(function (e) { return e.id === entry.id; }) || entry;
 
-      /* Uploaded reviews.html button title (aef1a74c L39): "a gentle raindrop
-       * chime for new challenges/reviews/boundary calls, official-scorer
-       * pending rulings and official scoring changes (not ABS), and the same
-       * chime whenever an active review could remove a run already on the
-       * scoreboard". */
-      if (isNew && !review.isABS) chime('review');
+      /* Alert sound fires for every event in the alert feed: challenges,
+       * umpire/crew-chief reviews, boundary calls, ABS pitch challenges,
+       * official-scorer pending rulings and official scoring changes. */
+      if (isNew) chime('review');
       if (review.runsAtRiskCount > 0 && !entry.warned) {
         /* "whenever an active review could remove a run" — chime the moment
          * the condition first becomes visible (including mid-review), then
@@ -462,6 +603,11 @@
       .then(function (payload) {
         if (scanSeq !== state.dateSeq || scanDate !== state.date) return null;
         state.games = flattenGames(payload);
+        var onSlate = Object.create(null);
+        state.games.forEach(function (g) { onSlate[g.gamePk] = true; });
+        Object.keys(state.diffTrackers).forEach(function (pk) {
+          if (!onSlate[pk]) delete state.diffTrackers[pk];
+        });
         var now = Date.now();
         var due = state.games.filter(function (g) { return shouldFetch(g, now); });
         state.scanError = null;
@@ -534,6 +680,34 @@
   /* ------------------------------------------------------------- sound/notify */
 
   var audioCtx = null;
+  var noiseBuffer = null;
+
+  function getNoiseBuffer() {
+    if (!audioCtx) return null;
+    if (noiseBuffer && noiseBuffer.sampleRate === audioCtx.sampleRate) return noiseBuffer;
+    var len = Math.floor(audioCtx.sampleRate * 1);
+    var buf = audioCtx.createBuffer(1, len, audioCtx.sampleRate);
+    var data = buf.getChannelData(0);
+    var seed = 22222; /* deterministic — the same pleasant rain every time */
+    for (var i = 0; i < len; i += 1) {
+      seed = (seed * 16807) % 2147483647;
+      data[i] = ((seed / 2147483647) * 2 - 1) * 0.5;
+    }
+    noiseBuffer = buf;
+    return buf;
+  }
+
+  /* ~3 seconds of gentle rain: a soft filtered-noise patter under a handful of
+   * soft pentatonic "raindrop" plinks with a long, warm feedback delay —
+   * pleasant enough to hear all season. Toggle the sound button to test. */
+  var RAIN_DROPS = [
+    /* [offsetSeconds, frequencyHz] — hand-placed over a C-major pentatonic,
+     * resolving back to a low warm root. */
+    [0.16, 1318.51], [0.36, 1046.50], [0.55, 1567.98], [0.73, 880.00],
+    [0.90, 1174.66], [1.08, 783.99], [1.24, 1760.00], [1.42, 1046.50],
+    [1.60, 1318.51], [1.80, 659.25], [2.02, 1567.98], [2.26, 880.00],
+    [2.52, 523.25],
+  ];
 
   function chime(reason) {
     if (!state.soundOn) return;
@@ -545,41 +719,98 @@
       if (!Ctx) return;
       if (!audioCtx) audioCtx = new Ctx();
       if (audioCtx.state === 'suspended' && audioCtx.resume) audioCtx.resume();
-      var t0 = audioCtx.currentTime;
+      var t0 = audioCtx.currentTime + 0.03;
+      var END = 2.9;
+
       var master = audioCtx.createGain();
-      master.gain.value = 0.0001;
+      master.gain.setValueAtTime(0.0001, t0);
+      master.gain.exponentialRampToValueAtTime(0.24, t0 + 0.18);
+      master.gain.setValueAtTime(0.24, t0 + 2.25);
+      master.gain.exponentialRampToValueAtTime(0.0001, t0 + END + 0.1);
       master.connect(audioCtx.destination);
-      master.gain.exponentialRampToValueAtTime(0.22, t0 + 0.05);
-      master.gain.exponentialRampToValueAtTime(0.0001, t0 + 1.5);
 
-      var echo = audioCtx.createDelay(0.5);
-      echo.delayTime.value = 0.22;
-      var echoGain = audioCtx.createGain();
-      echoGain.gain.value = 0.28;
-      master.connect(echo);
+      /* Long feedback delay — a soft "open porch" under the drops. */
+      var echo = audioCtx.createDelay(0.8);
+      echo.delayTime.setValueAtTime(0.32, t0);
+      var echoSend = audioCtx.createGain(); echoSend.gain.value = 0.5;
+      var echoGain = audioCtx.createGain(); echoGain.gain.value = 0.3;
+      var echoFb = audioCtx.createGain(); echoFb.gain.value = 0.38;
+      echoSend.connect(echo);
       echo.connect(echoGain);
-      echoGain.connect(audioCtx.destination);
+      echoGain.connect(echoFb);
+      echoFb.connect(echo);
+      echoGain.connect(master);
 
-      function drop(at, freq, dur) {
-        var osc = audioCtx.createOscillator();
-        var gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.setValueAtTime(freq, at);
-        osc.frequency.exponentialRampToValueAtTime(freq * 0.9, at + dur);
-        gain.gain.setValueAtTime(0.0001, at);
-        gain.gain.exponentialRampToValueAtTime(0.6, at + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
-        osc.connect(gain);
-        gain.connect(master);
-        osc.start(at);
-        osc.stop(at + dur + 0.05);
+      /* Rain bed: looped noise through a wandering lowpass. */
+      var noise = getNoiseBuffer();
+      if (noise) {
+        var bed = audioCtx.createBufferSource();
+        bed.buffer = noise;
+        bed.loop = true;
+        var bedFilter = audioCtx.createBiquadFilter();
+        bedFilter.type = 'lowpass';
+        bedFilter.Q.value = 0.6;
+        bedFilter.frequency.setValueAtTime(900, t0);
+        bedFilter.frequency.exponentialRampToValueAtTime(1500, t0 + 1.2);
+        bedFilter.frequency.exponentialRampToValueAtTime(700, t0 + END);
+        var bedGain = audioCtx.createGain();
+        bedGain.gain.setValueAtTime(0.0001, t0);
+        bedGain.gain.exponentialRampToValueAtTime(0.055, t0 + 0.3);
+        bedGain.gain.setValueAtTime(0.055, t0 + 2.1);
+        bedGain.gain.exponentialRampToValueAtTime(0.0001, t0 + END);
+        bed.connect(bedFilter);
+        bedFilter.connect(bedGain);
+        bedGain.connect(master);
+        bed.start(t0);
+        bed.stop(t0 + END + 0.05);
       }
 
-      drop(t0 + 0.0, 1180, 0.18);
-      drop(t0 + 0.16, 880, 0.22);
-      drop(t0 + 0.34, 1320, 0.3);
-      drop(t0 + 0.52, 660, 0.7);
-      drop(t0 + 0.58, 990, 0.7);
+      /* The drops. */
+      RAIN_DROPS.forEach(function (pair) {
+        var at = t0 + pair[0];
+        var freq = pair[1];
+        var dur = freq < 700 ? 0.85 : 0.5;
+        var osc = audioCtx.createOscillator();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, at);
+        osc.frequency.exponentialRampToValueAtTime(freq * 0.985, at + dur);
+        /* second, quieter partial an octave up — the "plink" */
+        var partial = audioCtx.createOscillator();
+        partial.type = 'sine';
+        partial.frequency.setValueAtTime(freq * 2, at);
+        var partialGain = audioCtx.createGain();
+        partialGain.gain.setValueAtTime(0.0001, at);
+        partialGain.gain.exponentialRampToValueAtTime(0.12, at + 0.015);
+        partialGain.gain.exponentialRampToValueAtTime(0.0001, at + 0.18);
+        var gain = audioCtx.createGain();
+        gain.gain.setValueAtTime(0.0001, at);
+        gain.gain.exponentialRampToValueAtTime(0.4, at + 0.018);
+        gain.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+        osc.connect(gain);
+        partial.connect(partialGain);
+        gain.connect(master);
+        partialGain.connect(master);
+        gain.connect(echoSend);
+        osc.start(at);
+        osc.stop(at + dur + 0.05);
+        partial.start(at);
+        partial.stop(at + 0.25);
+      });
+
+      /* One low warm tap to close the phrase. */
+      var closeAt = t0 + 2.62;
+      var root = audioCtx.createOscillator();
+      root.type = 'sine';
+      root.frequency.setValueAtTime(392.0, closeAt); /* G4 */
+      var rootGain = audioCtx.createGain();
+      rootGain.gain.setValueAtTime(0.0001, closeAt);
+      rootGain.gain.exponentialRampToValueAtTime(0.3, closeAt + 0.02);
+      rootGain.gain.exponentialRampToValueAtTime(0.0001, closeAt + 0.35);
+      root.connect(rootGain);
+      rootGain.connect(master);
+      rootGain.connect(echoSend);
+      root.start(closeAt);
+      root.stop(closeAt + 0.4);
     } catch (e) { /* audio is a nicety, never a failure path */ }
   }
 
@@ -610,7 +841,13 @@
 
   function entryMatches(entry, filter) {
     if (!entry) return false;
-    if (filter === 'all') return (entry.kind === 'review' || entry.kind === 'pending' || entry.kind === 'scoring_change') && !(entry.review && entry.review.isABS);
+    if (filter === 'all') {
+      /* state rows join the All view, except pitch-by-pitch rows (those live
+       * under Game State — they would swamp the alert feed). */
+      if (entry.kind === 'game_state') return entry.subtype !== 'pitch';
+      return (entry.kind === 'review' || entry.kind === 'pending' || entry.kind === 'scoring_change') && !(entry.review && entry.review.isABS);
+    }
+    if (filter === 'state') return entry.kind === 'game_state';
     if (filter === 'abs') return entry.review && entry.review.isABS;
     if (filter === 'challenges') return entry.review && entry.review.family === 'manager';
     if (filter === 'reviews') return entry.review && (entry.review.family === 'umpire' || entry.review.family === 'replay');
@@ -621,13 +858,22 @@
     return true;
   }
 
+  function mergedEntries() {
+    var alerts = state.entries;
+    if (!StateTracker) return alerts.slice();
+    return alerts.concat(StateTracker.all());
+  }
+
   function visibleEntries() {
-    return state.entries.filter(function (e) { return entryMatches(e, state.filter); })
+    var rows = mergedEntries().filter(function (e) { return entryMatches(e, state.filter); })
       .sort(function (a, b) { return (b.lastSeen || 0) - (a.lastSeen || 0); });
+    /* Pitch-level rows are voluminous; render at most the newest 150. */
+    if (state.filter === 'state') return rows.slice(0, 150);
+    return rows;
   }
 
   function statsFor() {
-    var s = { total: 0, manager: 0, umpire: 0, abs: 0, boundary: 0, under: 0, risk: 0, scoring: 0 };
+    var s = { total: 0, manager: 0, umpire: 0, abs: 0, boundary: 0, under: 0, risk: 0, scoring: 0, state: 0 };
     state.entries.forEach(function (e) {
       if (e.kind === 'scoring_change') { s.scoring += 1; return; }
       if (e.kind !== 'review') return;
@@ -640,6 +886,10 @@
       if (r.inProgress) s.under += 1;
       if (r.runsAtRiskCount > 0) s.risk += 1;
     });
+    if (StateTracker) {
+      var bySubtype = StateTracker.countBySubtype();
+      s.state = Object.keys(bySubtype).reduce(function (n, k) { return n + bySubtype[k]; }, 0);
+    }
     return s;
   }
 
@@ -666,6 +916,7 @@
       { n: s.under, label: 'Under review', cls: '' },
       { n: s.risk, label: 'Runs at risk', cls: 'is-risk' },
       { n: s.scoring, label: 'Scoring changes', cls: '' },
+      { n: s.state, label: 'State events', cls: '' },
     ];
     el.innerHTML = tiles.map(function (t) {
       return '<div class="stat-tile ' + t.cls + '"><div class="stat-num">' + t.n + '</div>' +
@@ -716,7 +967,70 @@
     return '<dt>' + UI.esc(label) + '</dt><dd>' + UI.esc(score.away) + '–' + UI.esc(score.home) + '</dd>';
   }
 
+  var STATE_LABELS = {
+    preview: 'Preview',
+    game_start: 'First pitch',
+    pitch: 'Pitch',
+    pitcher_change: 'Pitching change',
+    score_change: 'Score change',
+    game_final: 'Final',
+  };
+  var STATE_AVATARS = {
+    preview: '🗓️',
+    game_start: '🟢',
+    pitch: '⚾',
+    pitcher_change: '🔄',
+    score_change: '📈',
+    game_final: '🏁',
+  };
+
+  function stateTime(entry) {
+    return UI.formatTimestampSeconds ? UI.formatTimestampSeconds(entry.ts || entry.lastSeen) : new Date(entry.ts || Date.now()).toLocaleTimeString();
+  }
+
+  function renderStateRow(entry) {
+    var sub = entry.subtype;
+    var avatar = STATE_AVATARS[sub] || '📈';
+    var chips = [];
+    chips.push(UI.chip(STATE_LABELS[sub] || sub, sub === 'game_final' ? 'chip-ok' : sub === 'score_change' ? 'chip-scoring' : 'chip-review'));
+    if (sub === 'pitch' && entry.count) chips.push(UI.chip('Count ' + entry.count, 'chip-review'));
+    if (sub === 'pitch' && typeof entry.outs === 'number') chips.push(UI.chip(entry.outs + ' out' + (entry.outs === 1 ? '' : 's'), 'chip-review'));
+    if (sub === 'score_change' && entry.before && entry.after) {
+      chips.push(UI.chip(entry.before.away + '–' + entry.before.home + ' → ' + entry.after.away + '–' + entry.after.home, 'chip-scoring'));
+    }
+
+    var trackHtml = '';
+    if (sub === 'score_change' && entry.before && entry.after) {
+      trackHtml = '<dl class="score-track">' +
+        scoreLine('Before play', entry.before) +
+        scoreLine('After play', entry.after) +
+        '</dl>';
+    } else if (sub === 'game_final' && entry.after) {
+      trackHtml = '<dl class="score-track">' + scoreLine('Final', entry.after) + '</dl>';
+    } else if (sub === 'pitcher_change' && entry.before && entry.after) {
+      trackHtml = '<div class="feed-sub">Before: ' + UI.esc(entry.before.pitcher || '') + '</div>' +
+        '<div class="feed-sub">After: ' + UI.esc(entry.after.pitcher || '') + '</div>';
+    }
+
+    return '<div class="feed-row game-state-row" data-subtype="' + UI.esc(sub) + '">' +
+      '<div class="feed-avatar">' + avatar + '</div>' +
+      '<div class="feed-body">' +
+        '<div class="feed-top">' +
+          '<a href="game.html?gamePk=' + encodeURIComponent(entry.gamePk) + '&date=' + encodeURIComponent(state.date) + '"><b>' + UI.esc(entry.matchupLabel || '') + '</b></a>' +
+          (entry.inningLabel ? '<span>' + UI.esc(entry.inningLabel) + '</span>' : '') +
+          '<span title="Captured to the second">' + UI.esc(stateTime(entry)) + '</span>' +
+          '<a href="https://statsapi.mlb.com/api/v1/game/' + encodeURIComponent(entry.gamePk) + '/playByPlay" target="_blank" rel="noopener" title="Official MLB StatsAPI play-by-play source">MLB API ↗</a>' +
+        '</div>' +
+        '<div class="feed-title">' + UI.esc((entry.batter || '') + (entry.pitcher ? ' vs ' + entry.pitcher : '')) + '</div>' +
+        (entry.description ? '<div class="feed-sub">' + UI.esc(entry.description) + '</div>' : '') +
+        trackHtml +
+        '<div class="feed-chips">' + chips.join('') + '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   function renderRow(entry) {
+    if (entry.kind === 'game_state') return renderStateRow(entry);
     var r = entry.review || {};
     var tracker = entry.scoreTracker || {};
     var cls = 'feed-row';
@@ -809,7 +1123,7 @@
           '<span>' + UI.esc(r.inningLabel || '') + '</span>' +
           (r.challengerSide && r.challengerSide !== 'unknown' && r.challenger
             ? '<span>Challenged by ' + UI.esc(r.challenger) + (r.challengerRole ? ' (' + UI.esc(r.challengerRole) + ')' : '') + '</span>' : '') +
-          '<span>' + new Date(entry.lastSeen || Date.now()).toLocaleTimeString() + '</span>' +
+          '<span title="Captured to the second">' + UI.esc(UI.formatTimestampSeconds ? UI.formatTimestampSeconds(entry.lastSeen || Date.now()) : new Date(entry.lastSeen || Date.now()).toLocaleTimeString()) + '</span>' +
           '<a href="https://statsapi.mlb.com/api/v1/game/' + encodeURIComponent(entry.gamePk) + '/playByPlay" target="_blank" rel="noopener" title="Official MLB StatsAPI play-by-play source">MLB API ↗</a>' +
         '</div>' +
         '<div class="feed-title">' + UI.esc((r.batter && r.batter.name) || '') +
@@ -850,8 +1164,16 @@
       });
   }
 
+  function stateSignature() {
+    if (!StateTracker) return '0:0';
+    var rows = StateTracker.all();
+    var last = 0;
+    for (var i = 0; i < rows.length; i += 1) { last = Math.max(last, Number(rows[i].lastSeen) || 0); }
+    return rows.length + ':' + last;
+  }
+
   function entriesSignature() {
-    return state.filter + '|' + state.games.length + '|' + (state.lastGameDate || '') + '|' + state.entries.map(function (e) {
+    return state.filter + '|' + state.games.length + '|' + (state.lastGameDate || '') + '|st:' + stateSignature() + '|' + state.entries.map(function (e) {
       return [e.id, e.lastSeen, e.review && e.review.outcome, e.review && e.review.inProgress,
         e.scoreTracker && e.scoreTracker.actual ? e.scoreTracker.actual.away + '-' + e.scoreTracker.actual.home : '',
         e.scoreTracker && e.scoreTracker.before ? e.scoreTracker.before.away + '-' + e.scoreTracker.before.home : ''].join(':');
@@ -936,9 +1258,14 @@
       statusLine('Scan problem: ' + (state.scanError.message || 'network error') + ' — retrying.', true);
     } else {
       var live = state.games.filter(function (g) { return g.status && g.status.abstractGameState === 'Live'; }).length;
+      var fastPath = 0;
+      Object.keys(state.diffTrackers).forEach(function (pk) {
+        if (!state.diffTrackers[pk].disabled) fastPath += 1;
+      });
       statusLine(state.games.length + ' game(s) on ' + MLB.formatDateLabel(state.date) +
         ' · ' + live + ' live · ' + state.entries.length + ' tracked entr' + (state.entries.length === 1 ? 'y' : 'ies') +
         ' · scanned ' + new Date(state.lastScanAt || Date.now()).toLocaleTimeString() +
+        (fastPath ? ' · Δ-feed fast path on ' + fastPath + ' game(s)' : '') +
         (FeedLog.state.available ? ' · shared log connected' : ' · local log only'));
     }
   }
@@ -962,6 +1289,9 @@
     state.statusByPk = Object.create(null);
     state.counterCache = Object.create(null);
     state.absFetchedRevCount = Object.create(null);
+    state.diffTrackers = Object.create(null);
+    if (ScoringMonitor) ScoringMonitor.beginDate(clean);
+    if (StateTracker) StateTracker.beginDate(clean);
     state.lastGameDate = undefined;
     state.lookingForRecent = false;
     state.log = null;
@@ -976,6 +1306,13 @@
       FeedLog.openStream(clean);
       scan();
     });
+    if (StateLog && StateTracker) {
+      StateLog.load(clean).then(function (payload) {
+        if (seq !== state.dateSeq || state.date !== clean) return;
+        StateTracker.adopt(payload);
+        renderIfChanged();
+      });
+    }
   }
 
   function setFilter(filter) { state.filter = filter; render(); }
@@ -1047,6 +1384,8 @@
 
     Reviews.loadRegistry();
 
+    if (ScoringMonitor) ScoringMonitor.beginDate(state.date);
+    if (StateTracker) StateTracker.beginDate(state.date);
     var initSeq = state.dateSeq;
     var initDate = state.date;
     FeedLog.load(initDate).then(function (log) {
@@ -1056,6 +1395,13 @@
       FeedLog.openStream(initDate);
       scan();
     });
+    if (StateLog && StateTracker) {
+      StateLog.load(initDate).then(function (payload) {
+        if (initSeq !== state.dateSeq || state.date !== initDate) return;
+        StateTracker.adopt(payload);
+        renderIfChanged();
+      });
+    }
 
     state.timers.sweep = setInterval(sweep, STATUS_SWEEP_MS);
     state.timers.countdown = setInterval(updateChrome, 200);

@@ -248,6 +248,30 @@
       });
   }
 
+  /* Per-game timecode log for the delta feed (feed/live/timestamps). Same
+   * host, same public, unauthenticated API surface as every other call on
+   * this site — a few KB per poll. Used by the live-diff watcher to detect
+   * feed revisions without downloading it. */
+  function gameFeedTimecodes(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1.1/game/' + encodeURIComponent(gamePk) + '/feed/live/timestamps', {
+      signal: opts.signal, retries: 0,
+    });
+  }
+
+  /* RFC 6902 patch between two timecodes (the documented diffPatch usage:
+   * "You can get a game's timestamps … and pass two into the diffPatch
+   * endpoint"). May legitimately answer with the FULL feed instead of a patch
+   * array — callers must handle both (live-diff.js does). */
+  function gameFeedDiffPatch(gamePk, startTimecode, endTimecode, opts) {
+    opts = opts || {};
+    var qs = 'startTimecode=' + encodeURIComponent(startTimecode) +
+      '&endTimecode=' + encodeURIComponent(endTimecode);
+    return getJSON(API_ROOT + '/v1.1/game/' + encodeURIComponent(gamePk) + '/feed/live/diffPatch?' + qs, {
+      signal: opts.signal, retries: 0,
+    });
+  }
+
   /* Lean per-game status projection for the game page's 125ms watcher (~150 B). */
   function gameStatusLean(gamePk, opts) {
     opts = opts || {};
@@ -400,6 +424,8 @@
     scheduleRange: scheduleRange,
     slateStatus: slateStatus,
     gameFeed: gameFeed,
+    gameFeedTimecodes: gameFeedTimecodes,
+    gameFeedDiffPatch: gameFeedDiffPatch,
     gameStatusLean: gameStatusLean,
     playByPlay: playByPlay,
     boxscore: boxscore,

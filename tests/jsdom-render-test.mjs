@@ -291,6 +291,80 @@ console.log(`jsdom-render-test: ${LIVE ? 'LIVE official API' : 'fixtures'} mode`
   close();
 }
 
+/* 3c. Official Scoring Monitor — the separate, refresh-persistent log page.
+ *     Renders seeded localStorage content (Pages has no backend, so the page
+ *     reads its own browser log; the network stub answers nothing for it). */
+{
+  const seed = {
+    v: 1,
+    date: '2026-08-28',
+    savedAt: 1793000005000,
+    entries: [
+      {
+        id: '824638:10:scoring', kind: 'pending', gamePk: 824638, officialDate: '2026-08-28', atBatIndex: 10,
+        inningLabel: 'Top 7', batter: 'Pete Crow-Armstrong', pitcher: 'Luis Mey', matchupLabel: 'CIN @ CHC',
+        description: 'Pete Crow-Armstrong reaches on a sharp grounder.',
+        source: 'GET /api/v1/eventTypes — os_ruling_pending_primary / os_ruling_pending_prior (primary)',
+        before: { eventType: 'os_ruling_pending_primary', event: '', description: 'Pete Crow-Armstrong reaches on a sharp grounder.', isOut: false, rbi: 0, awayScore: 4, homeScore: 1 },
+        after: null, scoreBefore: { away: 4, home: 1 }, scoreAfter: null,
+        outcome: 'Pending', attribution: 'Undecided — the official scorer has not published the outcome yet.',
+        firstSeen: 1793000000000, lastSeen: 1793000000000, ts: 1793000000000,
+      },
+      {
+        id: '824638:12:scoring', kind: 'pending_resolved', gamePk: 824638, officialDate: '2026-08-28', atBatIndex: 12,
+        inningLabel: 'Bot 7', batter: 'Christian Encarnacion-Strand', pitcher: 'Caleb Thielbar', matchupLabel: 'CIN @ CHC',
+        description: 'Initial call: Christian Encarnacion-Strand reaches on a sharp grounder → Final ruling: Christian Encarnacion-Strand singles on a line drive.',
+        before: { eventType: 'os_ruling_pending_primary', event: '', description: 'Christian Encarnacion-Strand reaches on a sharp grounder.', isOut: false, rbi: 0, awayScore: 6, homeScore: 8 },
+        after: { eventType: 'single', event: 'Single', description: 'Christian Encarnacion-Strand singles on a line drive.', isOut: false, rbi: 1, awayScore: 7, homeScore: 8 },
+        scoreBefore: { away: 6, home: 8 }, scoreAfter: { away: 7, home: 8 },
+        outcome: 'Pending → Resolved', attribution: 'Official scorer / Elias / club review — see mlb.com/official-information/scoring-changes',
+        history: [{ at: 1793000003000, fromType: 'os_ruling_pending_primary', toType: 'single', from: { eventType: 'os_ruling_pending_primary', description: 'Christian Encarnacion-Strand reaches on a sharp grounder.' }, to: { eventType: 'single', description: 'Christian Encarnacion-Strand singles on a line drive.' } }],
+        firstSeen: 1793000001000, lastSeen: 1793000003000, ts: 1793000001000,
+      },
+      {
+        id: '824638:22:scoring', kind: 'scoring_change', gamePk: 824638, officialDate: '2026-08-28', atBatIndex: 22,
+        inningLabel: 'Top 9', batter: 'Will Brennan', pitcher: 'Mark Leiter Jr.', matchupLabel: 'CIN @ CHC',
+        description: 'Initial call: Will Brennan singles on a ground ball → Final ruling: Will Brennan singles on a bunt (field error).',
+        before: { eventType: 'single', event: 'Single', description: 'Will Brennan singles on a ground ball.', isOut: false, rbi: 0, awayScore: 8, homeScore: 8 },
+        after: { eventType: 'field_error', event: 'Field Error', description: 'Will Brennan singles on a bunt (field error).', isOut: false, rbi: 0, awayScore: 8, homeScore: 8 },
+        scoreBefore: { away: 8, home: 8 }, scoreAfter: { away: 8, home: 8 },
+        outcome: 'Reclassified', attribution: 'Official scorer / Elias / club review — see mlb.com/official-information/scoring-changes',
+        firstSeen: 1793000004000, lastSeen: 1793000004000, ts: 1793000004000,
+      },
+    ],
+  };
+  const seedJson = JSON.stringify(seed);
+  const { doc, errors, close, window } = await render('scoring.html', {
+    query: '?date=2026-08-28',
+    wait: 900,
+    before(window) {
+      try { window.localStorage.setItem('mlbp.scoringlog.2026-08-28', seedJson); } catch (e) { /* jsdom without storage */ }
+    },
+  });
+  const body = textOf(doc.querySelector('#scoring-list'));
+  check('scoring: rows rendered', (doc.querySelectorAll('#scoring-list .scoring-row').length) === 3, String(doc.querySelectorAll('#scoring-list .scoring-row').length));
+  check('scoring: pending row shows official before wording', /os_ruling_pending_primary/.test(body), body.slice(0, 300));
+  check('scoring: batter names rendered', /Pete Crow-Armstrong/.test(body) && /Will Brennan/.test(body), body.slice(0, 300));
+  check('scoring: resolved transition wording rendered', /single/.test(body) && /field_error/.test(body), body.slice(0, 300));
+  check('scoring: stats tiles rendered (pending/resolved/changes)', /Pending rulings/i.test(textOf(doc.querySelector('#scoring-stats'))) && /Scoring changes/i.test(textOf(doc.querySelector('#scoring-stats'))), textOf(doc.querySelector('#scoring-stats')));
+  check('scoring: export button present', !!doc.querySelector('#export-btn'));
+  check('scoring: date picker honored (?date=2026-08-28)', (doc.querySelector('#date-picker') || {}).value === '2026-08-28', String((doc.querySelector('#date-picker') || {}).value));
+  check('scoring: separation banner present', /Separate from the alert system/i.test(textOf(doc.querySelector('#separation-banner'))));
+  check('scoring: never touches the alert feed-log', !/\bFeedLog\b/.test(readFileSync(path.join(ROOT, 'assets/js/scoring-page.js'), 'utf8'))
+    && !/feed-log\.js/.test(readFileSync(path.join(ROOT, 'scoring.html'), 'utf8')));
+  // Tabs filter rows.
+  const tabs = [...doc.querySelectorAll('#scoring-tabs [data-filter]')];
+  check('scoring: four tabs rendered', tabs.length === 4, String(tabs.length));
+  doc.querySelector('#scoring-tabs [data-filter="pending"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 150));
+  check('scoring: pending tab shows only the pending row', doc.querySelectorAll('#scoring-list .scoring-row').length === 1, String(doc.querySelectorAll('#scoring-list .scoring-row').length));
+  doc.querySelector('#scoring-tabs [data-filter="changes"]').dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 150));
+  check('scoring: changes tab shows only the reclassified row', doc.querySelectorAll('#scoring-list .scoring-row').length === 1 && /field_error/.test(textOf(doc.querySelector('#scoring-list'))), String(doc.querySelectorAll('#scoring-list .scoring-row').length));
+  check('scoring: no uncaught errors', errors.length === 0, errors.join(' | '));
+  close();
+}
+
 /* 4. 404 */
 {
   const { doc, errors, close } = await render('404.html', { wait: 100 });

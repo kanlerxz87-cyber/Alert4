@@ -191,6 +191,130 @@ function mergeFeedLogPayloads(existing, incoming, dateStr) {
   };
 }
 
+/* --------------------------------------------- namespaced logs (NEW)
+ * The Official Scoring Monitor (/api/scoring-log) and the game-state timeline
+ * (/api/state-log) get their own stores, deliberately separate from the
+ * feed-log/alert persistence above: file naming, merge caps and SSE channels
+ * are all per-namespace, so changes here cannot affect the alert system.
+ *   scoring-log → data/scoring-log-<date>.json  (500 entries, 14 dates kept by client)
+ *   state-log   → data/state-log-<date>.json    (2000 entries)
+ */
+const NS_LOG_LIMITS = { 'scoring-log': 500, 'state-log': 2000 };
+const SSE_EVENT = { 'scoring-log': 'scoring-log', 'state-log': 'state-log' };
+
+function getNamespacedLogFilePath(kind, dateStr) {
+  if (!NS_LOG_LIMITS[kind]) return null;
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  return path.join(DATA_DIR, `${kind}-${dateStr}.json`);
+}
+
+function readNamespacedLogFromDisk(kind, dateStr) {
+  const filePath = getNamespacedLogFilePath(kind, dateStr);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.warn(`[server] failed to read ${kind} log for ${dateStr}:`, err);
+    return null;
+  }
+}
+
+function normalizeNamespacedPayload(kind, incoming, dateStr) {
+  const now = Date.now();
+  const limit = NS_LOG_LIMITS[kind];
+  const entries = Array.isArray(incoming && incoming.entries) ? incoming.entries.filter(Boolean) : [];
+  const map = new Map();
+  for (const e of entries) {
+    if (!e) continue;
+    const key = (e.id !== undefined && e.id !== null && e.id !== '') ? String(e.id) : null;
+    if (!key) continue;
+    const prev = map.get(key);
+    if (!prev) { map.set(key, e); continue; }
+    const merged = {
+      ...prev,
+      ...e,
+      firstSeen: Math.min(prev.firstSeen || e.firstSeen || now, e.firstSeen || prev.firstSeen || now),
+      lastSeen: Math.max(prev.lastSeen || 0, e.lastSeen || 0),
+    };
+    /* Wording is evidence: never let null overwrite recorded content.
+     * `before` keeps the earliest observed call; `after` keeps the latest. */
+    if (!e.before && prev.before !== undefined) merged.before = prev.before;
+    else if (prev.before && e.before) {
+      merged.before = (Number(prev.firstSeen) || Infinity) <= (Number(e.firstSeen) || Infinity) ? prev.before : e.before;
+    }
+    if (!e.after && prev.after !== undefined) merged.after = prev.after;
+    else if (prev.after && e.after) {
+      merged.after = (Number(e.lastSeen) || 0) >= (Number(prev.lastSeen) || 0) ? e.after : prev.after;
+    }
+    /* A resolved entry never reverts to unresolved. */
+    if (prev.after && !e.after) merged.after = prev.after;
+    /* keep the longer reclassification history chain */
+    const prevHist = Array.isArray(prev.history) ? prev.history : [];
+    const newHist = Array.isArray(e.history) ? e.history : [];
+    if (prevHist.length || newHist.length) merged.history = (newHist.length >= prevHist.length ? newHist : prevHist).slice(-50);
+    map.set(key, merged);
+  }
+  const sorted = [...map.values()]
+    .sort((a, b) => (Number(b.lastSeen) || 0) - (Number(a.lastSeen) || 0))
+    .slice(0, limit);
+  return { v: 1, date: dateStr, savedAt: now, entries: sorted };
+}
+
+function mergeNamespacedLogs(kind, existing, incoming, dateStr) {
+  const a = normalizeNamespacedPayload(kind, existing, dateStr);
+  const b = normalizeNamespacedPayload(kind, incoming, dateStr);
+  return normalizeNamespacedPayload(kind, { v: 1, date: dateStr, entries: [...a.entries, ...b.entries] }, dateStr);
+}
+
+function writeNamespacedLogToDisk(kind, dateStr, payload) {
+  const filePath = getNamespacedLogFilePath(kind, dateStr);
+  if (!filePath) return false;
+  try {
+    const existing = readNamespacedLogFromDisk(kind, dateStr);
+    const merged = mergeNamespacedLogs(kind, existing, payload, dateStr);
+    const serialized = JSON.stringify(merged, null, 2);
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, serialized, 'utf8');
+    fs.renameSync(tempPath, filePath);
+
+    const indexPath = path.join(DATA_DIR, `${kind}-index.json`);
+    let index = {};
+    if (fs.existsSync(indexPath)) {
+      try { index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) || {}; } catch (_) {}
+    }
+    index[dateStr] = merged.savedAt;
+    fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8');
+    return merged;
+  } catch (err) {
+    console.error(`[server] failed to write ${kind} log for ${dateStr}:`, err);
+    return false;
+  }
+}
+
+const nsSseClients = new Set(); // { res, date, kind }
+
+function nsBroadcast(kind, dateStr, payload) {
+  if (!nsSseClients.size) return 0;
+  let body;
+  try {
+    body = JSON.stringify(payload);
+  } catch (err) {
+    console.warn(`[server] could not serialize the ${kind} log for push:`, err);
+    return 0;
+  }
+  const frame = `event: ${SSE_EVENT[kind]}\ndata: ${body}\n\n`;
+  let sent = 0;
+  nsSseClients.forEach((client) => {
+    if (client.date !== dateStr || client.kind !== kind) return;
+    if (sseWrite(client.res, frame)) sent += 1;
+  });
+  return sent;
+}
+
+function emptyNamespacedLog(dateStr) {
+  return { v: 1, date: dateStr, savedAt: Date.now(), entries: [] };
+}
+
 /* --------------------------------------------------------------- push (SSE)
  * Live tail of the shared feed log. Polling it (GET /api/feed-log) leaves a
  * window of up to the poll interval between "another browser/session wrote an
@@ -394,6 +518,90 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // Namespaced logs: GET/POST /api/scoring-log and /api/state-log (+ /stream)
+  for (const kind of ['scoring-log', 'state-log']) {
+    if (pathname === `/api/${kind}/stream` && req.method === 'GET') {
+      const dateStr = reqUrl.searchParams.get('date');
+      if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+        return;
+      }
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
+        Connection: 'keep-alive',
+        'X-Accel-Buffering': 'no',
+        'Access-Control-Allow-Origin': '*',
+      });
+      sseWrite(res, `retry: 3000\nevent: connected\ndata: {"date":"${dateStr}","log":"${kind}"}\n\n`);
+      if (typeof res.flushHeaders === 'function') res.flushHeaders();
+      const client = { res, date: dateStr, kind };
+      nsSseClients.add(client);
+      const heartbeat = setInterval(() => { sseWrite(res, ': hb\n\n'); }, 20000);
+      if (typeof heartbeat.unref === 'function') heartbeat.unref();
+      const cleanup = () => {
+        clearInterval(heartbeat);
+        nsSseClients.delete(client);
+      };
+      req.on('close', cleanup);
+      req.on('error', cleanup);
+      res.on('close', cleanup);
+      const current = readNamespacedLogFromDisk(kind, dateStr);
+      if (current) sseWrite(res, `event: ${SSE_EVENT[kind]}\ndata: ${JSON.stringify(current)}\n\n`);
+      return;
+    }
+
+    if (pathname === `/api/${kind}` && req.method === 'GET') {
+      const dateStr = reqUrl.searchParams.get('date');
+      if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+        return;
+      }
+      const log = readNamespacedLogFromDisk(kind, dateStr);
+      sendJSON(res, 200, log || emptyNamespacedLog(dateStr));
+      return;
+    }
+
+    if (pathname === `/api/${kind}` && req.method === 'POST') {
+      let body = '';
+      req.setEncoding('utf8');
+      req.on('data', (chunk) => {
+        body += chunk;
+        if (body.length > 50 * 1024 * 1024) { // 50MB protection
+          res.writeHead(413, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Payload too large' }));
+          req.destroy();
+        }
+      });
+      req.on('end', () => {
+        try {
+          const payload = JSON.parse(body);
+          if (!payload || typeof payload !== 'object' || payload.v !== 1 || !payload.date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+            sendError(res, 400, 'Invalid payload: must be object with v: 1 and valid date (YYYY-MM-DD)');
+            return;
+          }
+          const saved = writeNamespacedLogToDisk(kind, payload.date, payload);
+          if (saved) {
+            const pushed = nsBroadcast(kind, payload.date, saved);
+            sendJSON(res, 200, {
+              ok: true,
+              log: kind,
+              date: payload.date,
+              savedAt: saved.savedAt,
+              entriesCount: saved.entries.length,
+              pushed,
+            });
+          } else {
+            sendError(res, 500, `Failed to save ${kind} log to disk`);
+          }
+        } catch (err) {
+          sendError(res, 400, `JSON parse error: ${err.message}`);
+        }
+      });
+      return;
+    }
+  }
+
   // --- Static File Serving ---
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     sendError(res, 405, 'Method not allowed');
@@ -473,6 +681,7 @@ server.listen(PORT, HOST, () => {
   console.log(`[MLB Live PBP Server] listening on http://${HOST}:${PORT}`);
   console.log(`[MLB Live PBP Server] Serving ${REPO_DIR}`);
   console.log(`[MLB Live PBP Server] Feed log persistence directory: ${DATA_DIR}`);
+  console.log('[MLB Live PBP Server] Namespaced logs: /api/scoring-log · /api/state-log (separate from alert feed-log)');
 });
 
 process.on('SIGTERM', () => {

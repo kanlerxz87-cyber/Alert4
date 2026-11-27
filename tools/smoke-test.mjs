@@ -1138,12 +1138,12 @@ console.log('\n[13] reference-parity fixes (session 6e2a58d9: G-2…G-5, G-9)');
     await rescanAnd((at) => assert(at > 0, 'new pending ruling did not chime'));
   });
 
-  await check('G-3: routine ABS pitch challenges never chime (uploaded button title)', async () => {
+  await check('G-3: routine ABS pitch challenges chime too (every event in the feed)', async () => {
     const keep = st.entries.filter((e) => !(e.review && e.review.isABS));
     assert(keep.length < st.entries.length, 'expected an ABS row in fixtures');
     st.entries = keep;
     await rescanAnd((at) => {
-      assert(at === 0, 'routine ABS row must not chime, got lastChimeAt=' + at);
+      assert(at > 0, 'routine ABS row must chime (sound fires for every event kind), got lastChimeAt=' + at);
       assert(st.entries.some((e) => e.review && e.review.isABS), 'ABS row should still be tracked');
     });
   });

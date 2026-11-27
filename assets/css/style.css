@@ -1100,3 +1100,10 @@ table.verify td.wrap { white-space: normal; min-width: 260px; }
   .spinner { animation-duration: 2s; }
   .game-card:hover { transform: none; }
 }
+
+/* Official Scoring Monitor (scoring.html) — a logging surface, not alerts */
+.scoring-row { border-left: 3px solid var(--green); }
+.scoring-row.is-live { border-left-color: var(--amber); border-color: var(--amber); }
+.scoring-row code { background: rgba(255, 255, 255, .05); border-radius: 4px; padding: 1px 6px; font-size: 12px; }
+.game-state-row { border-left: 3px solid var(--blue, #4dabf7); }
+.game-state-row[data-subtype="pitch"] { border-left-color: transparent; opacity: .92; }

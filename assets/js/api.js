@@ -3,8 +3,9 @@
  *
  * One place for every network call the site makes:
  *   1. fetch wrapper with timeout, retry, response cache and HTTP-429 handling
- *   2. endpoint helpers (schedule, feed/live, playByPlay, gameStatus, people stats)
- *   3. small date/number formatters shared by the pages
+ *   2. one bounded request gate for the whole tab (the usage-bound it enforces)
+ *   3. endpoint helpers (schedule, feed/live, change probes, gameStatus, stats)
+ *   4. small date/number formatters shared by the pages
  *
  * The StatsAPI is keyless and sends CORS headers, so a static GitHub Pages site
  * can call it straight from the browser.  Endpoint list + `fields` projections
@@ -24,12 +25,42 @@
   var QUIET_MIN_MS = 1000;
   var QUIET_MAX_MS = 300000;
 
+  /* ---------------------------------------------------------------- usage bound
+   * The StatsAPI is undocumented and publishes no rate limit.  Its own notice
+   * (gdx.mlb.com/components/copyright.txt, linked from every response) permits
+   * "individual, non-commercial, non-bulk use of the Materials", and MLB.com's
+   * Terms of Use forbid automated collection beyond personal, non-commercial
+   * home use.  Nothing in either document authorises a request flood, so this
+   * client holds itself to a *bounded* budget instead of fanning out per game:
+   *
+   *   - every request passes the same token bucket (RATE.maxPerSecond) and the
+   *     same small connection pool (RATE.maxConcurrent);
+   *   - when the host answers 429, or a burst of 5xx/timeouts lands, the bucket
+   *     narrows and recovers slowly — the client never keeps hammering;
+   *   - callers ask for the *smallest* projection that answers their question
+   *     (a ~120-byte metadata probe instead of the whole game feed);
+   *   - everything pauses while the tab is hidden.
+   *
+   * The bound is published on the Replay Feed's health line so the current rate
+   * is always visible.  See docs/api-usage.md for the arithmetic.
+   */
+  var RATE = {
+    maxPerSecond: 30,   // ceiling for one tab (all surfaces combined)
+    floorPerSecond: 2,  // never narrow past this
+    maxConcurrent: 8,
+    healthyStreakMs: 30000,
+    lastNarrowAt: 0,
+  };
+
   var state = {
     quietUntil: 0,
     lastError: null,
     lastOK: 0,
     requests: 0,
     cacheHits: 0,
+    throttled: 0,
+    byKind: Object.create(null),
+    lastStatus: 0,
   };
 
   var cache = Object.create(null);
@@ -73,11 +104,12 @@
    *   opts.retries  extra attempts after a failed one (default 1)
    *   opts.signal   external AbortSignal (poll loops use it to cancel)
    *   opts.keepQuiet  bypass the 429 quiet window (used by the quiet probe only)
+   *   opts.kind     label for the per-surface counters ("pbp", "status", ...)
    */
   function getJSON(url, opts) {
     opts = opts || {};
     var ttl = opts.ttl || 0;
-    var retries = typeof opts.retries === 'number' ? opts.retries : 1;
+    var kind = opts.kind || 'other';
 
     if (ttl && cache[url] && now() - cache[url].at < cache[url].ttl) {
       state.cacheHits += 1;
@@ -91,11 +123,29 @@
       return Promise.reject(qerr);
     }
 
+    return withBudget(function () {
+      return attemptLoop(url, opts, kind);
+    }, opts.signal).then(function (data) {
+      if (ttl) {
+        cache[url] = { at: now(), ttl: ttl, data: data };
+        pruneCache();
+      }
+      return data;
+    });
+  }
+
+  /* One attempt chain, unchanged semantics: retry on 5xx/timeout/network. */
+  function attemptLoop(url, opts, kind) {
+    var retries = typeof opts.retries === 'number' ? opts.retries : 1;
     var attempt = 0;
 
     function once() {
       attempt += 1;
       state.requests += 1;
+      state.byKind[kind] = (state.byKind[kind] || 0) + 1;
+      RATE.lastRequestAt = now();
+      RATE.window = (RATE.window || []).filter(function (t) { return now() - t < 1000; });
+      RATE.window.push(now());
 
       var controller = new AbortController();
       var timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
@@ -116,23 +166,24 @@
 
       return request.then(function (res) {
         clearTimeout(timer);
+        state.lastStatus = res.status;
 
         if (res.status === 429) {
           var wait = parseRetryAfter(res.headers.get('Retry-After')) || QUIET_DEFAULT_MS;
           wait = Math.min(QUIET_MAX_MS, Math.max(QUIET_MIN_MS, wait));
           state.quietUntil = Math.max(state.quietUntil, now() + wait);
+          narrowRate();
           throw ApiError('StatsAPI asked to slow down (HTTP 429); pausing ' + Math.round(wait / 1000) + 's', 429, url);
         }
-        if (!res.ok) throw ApiError('HTTP ' + res.status + ' from ' + url, res.status, url);
+        if (!res.ok) {
+          if (res.status >= 500) narrowRate();
+          throw ApiError('HTTP ' + res.status + ' from ' + url, res.status, url);
+        }
         return res.json();
       }).then(function (data) {
         clearTimeout(timer);
         state.lastOK = now();
         state.lastError = null;
-        if (ttl) {
-          cache[url] = { at: now(), ttl: ttl, data: data };
-          pruneCache();
-        }
         return data;
       }).catch(function (err) {
         clearTimeout(timer);
@@ -140,6 +191,7 @@
 
         var status = err && err.status;
         var retryable = !status || status >= 500 || err.name === 'AbortError' || err.name === 'TypeError';
+        if (err.name === 'AbortError' || err.name === 'TypeError') narrowRate();
         if (retryable && attempt <= retries) {
           return sleep(300 * attempt).then(once);
         }
@@ -151,6 +203,111 @@
     }
 
     return once();
+  }
+
+  /* Narrow the bucket on a refusal / failure burst; recover slowly while healthy. */
+  function narrowRate() {
+    RATE.lastNarrowAt = now();
+    RATE.maxPerSecond = Math.max(RATE.floorPerSecond, Math.round(RATE.maxPerSecond * 0.6));
+  }
+
+  function recoverRate() {
+    if (!RATE.lastNarrowAt) return;
+    if (now() - RATE.lastNarrowAt < RATE.healthyStreakMs) return;
+    if (RATE.maxPerSecond >= RATE.basePerSecond) return;
+    RATE.maxPerSecond = Math.min(RATE.basePerSecond || 30, RATE.maxPerSecond + 1);
+  }
+  RATE.basePerSecond = RATE.maxPerSecond;
+
+  /**
+   * withBudget(work, signal) — the shared gate.
+   *   • at most RATE.maxConcurrent requests in flight for the whole tab
+   *   • at most RATE.maxPerSecond started per rolling second
+   *   • rejects immediately when the caller's signal is already aborted
+   */
+  var inFlight = 0;
+  var startTimes = [];
+  var waiting = [];
+
+  function pump() {
+    if (!waiting.length) return;
+    var t = now();
+    while (startTimes.length && t - startTimes[0] > 1000) startTimes.shift();
+    recoverRate();
+    while (waiting.length && inFlight < RATE.maxConcurrent && startTimes.length < RATE.maxPerSecond) {
+      var job = waiting.shift();
+      if (job.done) continue;
+      job.done = true;
+      inFlight += 1;
+      state.throttled += 1;
+      startTimes.push(now());
+      Promise.resolve()
+        .then(job.work)
+        .then(job.resolve, job.reject)
+        .then(function () {
+          inFlight -= 1;
+          pump();
+        });
+    }
+    if (waiting.length) {
+      clearTimeout(pumpTimer);
+      pumpTimer = setTimeout(pump, 40);
+    }
+  }
+  var pumpTimer = null;
+
+  function withBudget(work, signal) {
+    if (signal && signal.aborted) {
+      var aerr = ApiError('Request cancelled', 0, '');
+      aerr.aborted = true;
+      return Promise.reject(aerr);
+    }
+    return new Promise(function (resolve, reject) {
+      var job = { work: work, resolve: resolve, reject: reject, done: false };
+      waiting.push(job);
+      if (signal) {
+        signal.addEventListener('abort', function () {
+          if (!job.done) {
+            job.done = true;
+            var e = ApiError('Request cancelled', 0, '');
+            e.aborted = true;
+            reject(e);
+          }
+        }, { once: true });
+      }
+      pump();
+    });
+  }
+
+  /**
+   * probeIntervalFor(liveCount, perSecond) — how often to probe ONE game so the
+   * whole slate stays inside `perSecond` probes per second.  Never faster than
+   * 250 ms, never slower than 2 s; both polling surfaces use it so their
+   * budgets add up predictably instead of each assuming it is alone.
+   */
+  function probeIntervalFor(liveCount, perSecond) {
+    var count = Math.max(1, Number(liveCount) || 1);
+    var budget = Math.max(0.5, Number(perSecond) || 8);
+    if (count <= budget) return 250;
+    var interval = Math.round((count / budget) * 1000);
+    return Math.max(250, Math.min(2000, interval));
+  }
+
+  /* Live usage figures for the health line: current rate over the last second,
+   * the ceiling in force, and requests counted per surface since page load. */
+  function usageStats() {
+    var t = now();
+    var recent = startTimes.filter(function (s) { return t - s <= 1000; }).length;
+    return {
+      perSecond: recent,
+      ceiling: RATE.maxPerSecond,
+      concurrent: inFlight,
+      requests: state.requests,
+      byKind: state.byKind,
+      quietRemainingMs: quietRemainingMs(),
+      lastStatus: state.lastStatus,
+      totalGamesScanned: state.totalGamesScanned || 0,
+    };
   }
 
   /* ------------------------------------------------------------- endpoints */
@@ -173,7 +330,7 @@
     return getJSON(scheduleUrl(date, {
       hydrate: opts.hydrate === undefined ? SCHEDULE_HYDRATE : opts.hydrate,
       fields: opts.fields || '',
-    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries });
+    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries, kind: 'schedule' });
   }
 
   /* Date-range game counts — used only to point at the most recent date that
@@ -182,7 +339,25 @@
     opts = opts || {};
     var qs = 'sportId=' + SPORT_ID + '&startDate=' + encodeURIComponent(startDate) +
       '&endDate=' + encodeURIComponent(endDate) + '&fields=dates,date,totalGames';
-    return getJSON(API_ROOT + '/v1/schedule?' + qs, { ttl: 300000, retries: 0, signal: opts.signal });
+    return getJSON(API_ROOT + '/v1/schedule?' + qs, { ttl: 300000, retries: 0, signal: opts.signal, kind: 'schedule' });
+  }
+
+  /* Lean slate for the Replay Feed: gamePk, status and the two team records —
+   * everything the scanner needs to sort and label a game, without hydrations.
+   * ~1/6th of the hydrated card payload; the 125 ms status sweep still owns
+   * freshness, this is only the roster of games. */
+  var SLATE_FIELDS = 'dates,games,gamePk,season,gameDate,officialDate,status,abstractGameState,' +
+    'codedGameState,detailedState,statusCode,reason,teams,away,home,team,id,name,score,isWinner';
+
+  function slateGames(date, opts) {
+    opts = opts || {};
+    return schedule(date, {
+      hydrate: '',
+      fields: SLATE_FIELDS,
+      ttl: opts.ttl === undefined ? 1000 : opts.ttl,
+      signal: opts.signal,
+      retries: 0,
+    });
   }
 
   /* Lean slate status sweep: gamePk + status only (~2.4 KB for the whole day). */
@@ -205,7 +380,7 @@
     opts = opts || {};
     var url = API_ROOT + '/v1.1/game/' + gamePk + '/feed/live';
     if (opts.fields) url += '?fields=' + encodeURIComponent(opts.fields);
-    return getJSON(url, { signal: opts.signal, retries: opts.retries })
+    return getJSON(url, { signal: opts.signal, retries: opts.retries, kind: 'feed' })
       .catch(function (err) {
         if (err && err.status === 404) {
           var v1Url = API_ROOT + '/v1/game/' + gamePk + '/feed/live';
@@ -253,25 +428,125 @@
     opts = opts || {};
     var fields = 'gameData,status,abstractGameState,codedGameState,detailedState,statusCode,reason,startTimeTBD,abstractGameCode';
     return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(fields), {
-      signal: opts.signal, retries: 0,
+      signal: opts.signal, retries: 0, kind: 'status',
     });
   }
+
+  /* ----------------------------------------------------------- change probes
+   *
+   * The smallest request that can tell us "has anything happened in this game
+   * since we last looked?" — `metaData` only (~120 B: the feed's own timecode
+   * plus Gameday's event counters), instead of re-downloading the whole
+   * play-by-play every poll.
+   *
+   * Latency note (this is the part that matters for the alert path): MLB
+   * publishes cached responses with `max-age=10`, so asking the *same* URL more
+   * often than that can hand back a stale copy.  The probe therefore carries a
+   * per-request nonce, which guarantees a fresh read from the nearest cache
+   * node.  It is not a different resource — just a cache-bypass on a 120-byte
+   * document — and the client-wide budget in RATE still bounds the rate.
+   */
+  /* Fields we actually diff: the feed timecode (moves on every published
+   * change) and Gameday's official event counters.  `eventId` is what lets a
+   * no-timecode response still be recognised as new. */
+  var PROBE_FIELDS = 'metaData,timeStamp,gameEvents,eventId,eventIndex,gamePk,wait,statusCode,abstractGameState,detailedState';
+
+  function probeUrl(gamePk, nonce) {
+    return API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' +
+      encodeURIComponent(PROBE_FIELDS) + (nonce ? '&_=' + nonce : '');
+  }
+
+  function gameProbe(gamePk, opts) {
+    opts = opts || {};
+    var nonce = opts.nonce === false ? '' : String(now()) + Math.random().toString(36).slice(2, 7);
+    return getJSON(probeUrl(gamePk, nonce), {
+      ttl: 0,
+      retries: 0,
+      signal: opts.signal,
+      kind: 'probe',
+    }).then(function (payload) {
+      return probeSignature(payload);
+    });
+  }
+
+  /* Stable string for "the state of this game's feed": the timecode when the
+   * host publishes one, otherwise the newest gameEvent id/index.  '' means the
+   * payload carried no marker at all (caller then falls back to a full read). */
+  function probeSignature(payload) {
+    var meta = (payload && payload.metaData) || {};
+    var ts = meta.timeStamp;
+    if (ts === undefined || ts === null) ts = payload && payload.timeStamp;
+    if (ts !== undefined && ts !== null && ts !== '') return String(ts);
+
+    var events = meta.gameEvents;
+    var last = Array.isArray(events) && events.length ? events[events.length - 1] : null;
+    if (last && (last.eventId || last.eventId === 0)) {
+      return 'ev:' + last.eventId + ':' + (last.eventIndex === undefined ? '' : last.eventIndex);
+    }
+    var wait = meta.wait;
+    if (wait !== undefined && wait !== null) return 'wait:' + wait;
+    return '';
+  }
+
+  /**
+   * Official event-type registry (GET /api/v1/eventTypes) — the API's own list
+   * of play classifications with a human description, including
+   * `os_ruling_pending_primary` / `os_ruling_pending_prior`
+   * ("Official Scorer Ruling Pending").  Cached for an hour: static reference.
+   * Resolves to a map { eventType: description } and never rejects.
+   */
+  function eventTypes(opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1/eventTypes', { ttl: 3600000, retries: 0, signal: opts.signal, kind: 'reference' })
+      .then(function (rows) {
+        var byType = Object.create(null);
+        (Array.isArray(rows) ? rows : []).forEach(function (row) {
+          if (row && row.code) byType[row.code] = row.description || '';
+        });
+        return byType;
+      })
+      .catch(function () { return Object.create(null); });
+  }
+
+  /**
+   * Gameday incremental change set between two of the feed's own timecodes.
+   * GET /api/v1.1/game/{pk}/feed/live/diffPatch?startTimecode=…&endTimecode=…
+   * Returns either an RFC-6902 op array or (for a large gap) the whole feed —
+   * `normalizeDiff()` in live-sync.js tells them apart.  Optional: the feed
+   * never depends on it, so any failure is reported and the caller polls.
+   */
+  function diffPatch(gamePk, startTimecode, endTimecode, opts) {
+    opts = opts || {};
+    var qs = '?language=en&startTimecode=' + encodeURIComponent(startTimecode);
+    if (endTimecode) qs += '&endTimecode=' + encodeURIComponent(endTimecode);
+    return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live/diffPatch' + qs, {
+      ttl: 0, retries: 0, signal: opts.signal, kind: 'diff',
+    });
+  }
+
+  function timestamps(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live/timestamps', {
+      ttl: 0, retries: 0, signal: opts.signal, kind: 'diff',
+    });
+  }
+
 
   function playByPlay(gamePk, opts) {
     opts = opts || {};
     var url = API_ROOT + '/v1/game/' + gamePk + '/playByPlay';
     if (opts.fields) url += '?fields=' + encodeURIComponent(opts.fields);
-    return getJSON(url, { signal: opts.signal, retries: opts.retries });
+    return getJSON(url, { signal: opts.signal, retries: opts.retries, kind: 'playByPlay' });
   }
 
   function boxscore(gamePk, opts) {
     opts = opts || {};
-    return getJSON(API_ROOT + '/v1/game/' + gamePk + '/boxscore', { signal: opts.signal, retries: 0 });
+    return getJSON(API_ROOT + '/v1/game/' + gamePk + '/boxscore', { signal: opts.signal, retries: 0, kind: 'boxscore' });
   }
 
   function linescore(gamePk, opts) {
     opts = opts || {};
-    return getJSON(API_ROOT + '/v1/game/' + gamePk + '/linescore', { signal: opts.signal, retries: 0 });
+    return getJSON(API_ROOT + '/v1/game/' + gamePk + '/linescore', { signal: opts.signal, retries: 0, kind: 'linescore' });
   }
 
   /* Official game-status / review-type registry (codes -> official wording).
@@ -399,8 +674,19 @@
     schedule: schedule,
     scheduleRange: scheduleRange,
     slateStatus: slateStatus,
+    slateGames: slateGames,
+    SLATE_FIELDS: SLATE_FIELDS,
     gameFeed: gameFeed,
     gameStatusLean: gameStatusLean,
+    gameProbe: gameProbe,
+    probeSignature: probeSignature,
+    PROBE_FIELDS: PROBE_FIELDS,
+    eventTypes: eventTypes,
+    diffPatch: diffPatch,
+    timestamps: timestamps,
+    usageStats: usageStats,
+    probeIntervalFor: probeIntervalFor,
+    RATE: RATE,
     playByPlay: playByPlay,
     boxscore: boxscore,
     linescore: linescore,

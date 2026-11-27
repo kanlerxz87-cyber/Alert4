@@ -53,6 +53,12 @@
         from the live StatsAPI. The pages, class names, element ids, globals, endpoints, polling
         cadences and feature set are unchanged.
       </p>
+      <p>
+        <strong>Latest pass (2026-11-27):</strong> section <a href="#section-18">18</a> covers the latency
+        budget, official state capture, the alert sound and the separate official-scoring log added in
+        the <code>arena/8df99052-alert4</code> session — including the four items that could not be
+        checked without live access to <code>statsapi.mlb.com</code> (L-6…L-8, L-15).
+      </p>
     </div>
 
     <h2>1. Verified against official sources</h2>
@@ -1241,6 +1247,117 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       None of the parallel sessions' site content differed from upstream beyond the deployment adaptations recorded as C-1/C-2/C-3,
       <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
       <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
+    </p>
+
+    <h2 id="section-18">18. Latency, game state, alert sound &amp; the separate scoring log (session <code>arena/8df99052-alert4</code>, 2026-11-27)</h2>
+    <p style="color:var(--muted);font-size:13px">
+      This session added a bounded request budget, a two-tier probe/read scan, official
+      state capture, a synthesised alert sound and an isolated official-scoring store.
+      Everything below was verified <strong>against the shipped code and the test suite</strong>
+      from a sandbox whose egress is restricted to <code>github.com</code>,
+      <code>codeload.github.com</code>, <code>api.github.com</code>, <code>registry.npmjs.org</code>,
+      <code>pypi.org</code> and <code>files.pythonhosted.org</code> — so
+      <strong><code>statsapi.mlb.com</code> was not reachable and no live response was fetched in this session</strong>.
+      Field names are quoted from the payloads already recorded in sections 1–17 and in
+      <a href="docs/statsapi-field-map.md">docs/statsapi-field-map.md</a>; the new endpoints
+      are the ones this page flags as unverified.
+    </p>
+
+    <table class="verify">
+      <thead>
+        <tr><th>ID</th><th>Item</th><th>Status</th><th>What was checked here</th><th>Source</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>L-5</td>
+          <td class="wrap">Bounded request budget (30/s, 8 concurrent, narrows on 429/5xx/timeout, pauses when the tab is hidden)</td>
+          <td class="status-ok">Verified in code + tests</td>
+          <td class="wrap"><code>tests/alert-pipeline-test.mjs</code> drives 40 parallel requests through the gate and asserts the concurrency ceiling, that every request is counted once, and that an already-aborted caller rejects before its request starts. The arithmetic is in <a href="docs/api-usage.md">docs/api-usage.md</a>.</td>
+          <td class="wrap">this repo: <code>assets/js/api.js</code> <code>RATE</code>/<code>withBudget</code></td>
+        </tr>
+        <tr>
+          <td>L-6</td>
+          <td class="wrap"><strong>Unverified:</strong> <code>metaData.timeStamp</code> exists on <code>feed/live</code> and moves on every published change</td>
+          <td class="status-unverified">Unverified — needs a live fetch</td>
+          <td class="wrap">The probe treats a missing/empty signature as "no marker": the client then falls back to a full play-by-play read, so the feed stays correct, it just loses the bandwidth win. The <code>gameEvents</code>/<code>eventId</code> fallback is likewise unverified. Confirmed only by the community record that Gameday's own client uses <code>metaData.timeStamp</code> as its <code>diffPatch</code> anchor.</td>
+          <td class="wrap"><a href="https://www.reddit.com/r/mlbdata/comments/1d5phtj/" target="_blank" rel="noopener">r/mlbdata</a> · <a href="https://github.com/NicolasRichards/BallparkMatchups/pull/1" target="_blank" rel="noopener">BallparkMatchups PR #1</a></td>
+        </tr>
+        <tr>
+          <td>L-7</td>
+          <td class="wrap"><strong>Unverified:</strong> the feed timecode is UTC (<code>YYYYMMDD_HHMMSS</code>)</td>
+          <td class="status-unverified">Assumption, guarded</td>
+          <td class="wrap"><code>GameState.parseGameTimecode()</code> sanity-checks the parsed value against the moment the payload was observed and returns <code>null</code> rather than showing a bogus latency. If the assumption is wrong, the health line shows "waiting for a timecode" instead of a wrong number.</td>
+          <td class="wrap">this repo: <code>assets/js/game-state.js</code></td>
+        </tr>
+        <tr>
+          <td>L-8</td>
+          <td class="wrap"><strong>Unverified:</strong> responses carry <code>max-age=10</code>, i.e. re-requesting the same URL can return a cached copy</td>
+          <td class="status-unverified">Reported upstream, not re-checked</td>
+          <td class="wrap">The probe adds a per-request nonce to bypass the cache. If an intermediate cache ignores query strings the read can still be up to 10 s stale. This is the reason the probe exists at all; it is not claimed as measured here.</td>
+          <td class="wrap"><a href="https://sportsapis.dev/mlb-stats-api" target="_blank" rel="noopener">sportsapis.dev</a> (2026-11-02)</td>
+        </tr>
+        <tr>
+          <td>L-9</td>
+          <td class="wrap">Terms posture: "individual, non-commercial, non-bulk use"; MLB.com Terms of Use bar automated collection beyond personal, non-commercial home use; no published rate limit</td>
+          <td class="status-flag">Governing, unresolved</td>
+          <td class="wrap">Written up, with the request rate of every surface and the code that enforces it, in <a href="docs/api-usage.md">docs/api-usage.md</a>. The conclusion is unchanged from F-003/U-*: this is a personal, non-commercial, single-user consumer of a public feed; any public or monetised use would need written permission from MLB Advanced Media first. No bulk collection, no server-side fan-out, no redistribution.</td>
+          <td class="wrap"><a href="http://gdx.mlb.com/components/copyright.txt" target="_blank" rel="noopener">MLB usage notice</a> · <a href="https://www.mlb.com/official-information/scoring-changes" target="_blank" rel="noopener">scoring changes</a></td>
+        </tr>
+        <tr>
+          <td>L-10</td>
+          <td class="wrap"><code>GET /api/v1/eventTypes</code> returns <code>os_ruling_pending_primary</code> / <code>_prior</code> with description "Official Scorer Ruling Pending"</td>
+          <td class="status-flag">Carried from upstream (already verified there)</td>
+          <td class="wrap">Not re-fetched in this session. The scoring log uses the registry only for the human-readable label and falls back to the raw code, so a registry failure degrades the wording, not the detection.</td>
+          <td class="wrap">sections 1–17 of this page · <code>assets/js/scoring-log.js</code></td>
+        </tr>
+        <tr>
+          <td>L-11</td>
+          <td class="wrap"><strong>Not enabled:</strong> Gameday push WebSocket + <code>feed/live/diffPatch</code></td>
+          <td class="status-flag">Deliberately out of scope</td>
+          <td class="wrap"><code>MLB.diffPatch()</code> and <code>MLB.timestamps()</code> are exposed but unused. One persistent socket per game is not obviously within non-bulk use, and a wrong RFC-6902 patch corrupts state silently. The safe shape for turning it on is written down in <a href="docs/latency.md">docs/latency.md</a> §5.</td>
+          <td class="wrap"><a href="https://github.com/NicolasRichards/BallparkMatchups/pull/1" target="_blank" rel="noopener">BallparkMatchups PR #1</a></td>
+        </tr>
+        <tr>
+          <td>L-12</td>
+          <td class="wrap">The alert sound (~2.6 s synthesised rain drop) and the separate scoring sound</td>
+          <td class="status-ok">Verified in code + tests</td>
+          <td class="wrap">Checks assert the duration and drop count, that the two players keep independent preferences, and that <code>play()</code> returns <code>false</code> (never throws) when there is no <code>AudioContext</code>. An offline render of the real module through a recording <code>AudioContext</code> confirms the shape: six drops at 0.02/0.44/0.88/1.26/1.80/2.20 s, each a sine falling to 62% of its start pitch (1180/880/1320/1040/740/1560 Hz) under a 3.4 kHz lowpass with a 0.24 s echo, and nothing scheduled at all while the switch is off. Nobody has <em>listened</em> to it in a browser from this sandbox, so whether it is pleasant by hour nine is still a judgement for a human ear. Design described in <a href="docs/alert-sound.md">docs/alert-sound.md</a>.</td>
+          <td class="wrap">this repo: <code>assets/js/chime.js</code></td>
+        </tr>
+        <tr>
+          <td>L-13</td>
+          <td class="wrap">A scoring change can only be recorded when the initial call was observed before the change landed</td>
+          <td class="status-flag">Known limitation, stated in the UI</td>
+          <td class="wrap">The payload has no change marker; the log reconciles consecutive reads of the same <code>atBatIndex</code>. Opening the page after the change means the first version is unknowable, and the row says so rather than inventing it. Post-Final games are still re-scanned for 30 minutes to catch scorer rulings published after the game.</td>
+          <td class="wrap">this repo: <code>assets/js/scoring-log.js</code> · <a href="docs/scoring-log.md">docs/scoring-log.md</a></td>
+        </tr>
+        <tr>
+          <td>L-16</td>
+          <td class="wrap">The scoring log's ingest hand-off is exercised against synthetic payloads only</td>
+          <td class="status-flag">Timing unobserved on a live feed</td>
+          <td class="wrap">On the Replay Feed the scoring log ingests the plays the feed has already read (see <a href="docs/scoring-log.md">docs/scoring-log.md</a>), which is what makes it cost zero extra requests. The hand-off, the 10&nbsp;s stand-down and the resume are covered by <code>tests/alert-pipeline-test.mjs</code> with stubbed responses; StatsAPI is unreachable from this sandbox, so the hand-off's timing against a real moving feed is unobserved.</td>
+          <td class="wrap">this repo: <code>assets/js/scoring-log.js</code> · <code>assets/js/reviews-feed.js</code></td>
+        </tr>
+        <tr>
+          <td>L-14</td>
+          <td class="wrap">Game-page before/after state panel</td>
+          <td class="status-unverified">Recorded, not rendered</td>
+          <td class="wrap">The state store captures and persists the game page's data too, but only the Replay Feed renders it today (<code>GameState.latest()</code> / <code>forGame()</code> are exported for the panel). Listed as remaining work in <a href="docs/game-state.md">docs/game-state.md</a> §4, not claimed as done.</td>
+          <td class="wrap">this repo: <code>assets/js/game-state.js</code></td>
+        </tr>
+        <tr>
+          <td>L-15</td>
+          <td class="wrap">The Pages deployment serves the new scripts/endpoints</td>
+          <td class="status-unverified">Not verifiable from this sandbox</td>
+          <td class="wrap">The new files are plain scripts and the new endpoints exist only on the local server (<code>server.mjs</code>); on Pages the scoring and state stores degrade to <code>localStorage</code>, as the feed log already does. <code>tools/restoration-check.mjs</code>, <code>npm test</code>, <code>tests/run-all.mjs</code> and the new pipeline test all pass on this tree; the live deployment was not checked.</td>
+          <td class="wrap">CI: <code>.github/workflows/site-check.yml</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted);font-size:13px">
+      Checks run on this tree: <code>node tools/restoration-check.mjs</code> ·
+      <code>npm test</code> · <code>node tests/run-all.mjs</code> ·
+      <code>node tests/alert-pipeline-test.mjs</code> (29 checks).
     </p>
   </main>
 

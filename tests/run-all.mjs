@@ -25,6 +25,7 @@ results.push(run('syntax: assets/js/*.js', 'bash', ['-lc', 'set -e; for f in ass
 results.push(run('link-check', process.execPath, [path.join(HERE, 'link-check.mjs')]));
 results.push(run('contract-check', process.execPath, [path.join(HERE, 'contract-check.mjs')]));
 results.push(run('jsdom-render-test', process.execPath, [path.join(HERE, 'jsdom-render-test.mjs')]));
+results.push(run('alert-pipeline-test', process.execPath, [path.join(HERE, 'alert-pipeline-test.mjs')]));
 
 // Report, and ignore a SKIPPED jsdom run (exit 0 with a SKIPPED line).
 console.log('\n========== summary ==========');

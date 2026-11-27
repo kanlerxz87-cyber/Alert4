@@ -37,6 +37,7 @@
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
       <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-test-btn" class="btn btn-ghost" title="Sound check — plays the alert rain drop once (2.6 s) so you can confirm the alert system is working; it does not change the on/off toggle. Press again while it plays to stop it.">▶ Test sound</button>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
@@ -51,6 +52,9 @@
   <main class="reviews-main">
     <section id="active-strip" class="active-strip-wrap"></section>
 
+    <!-- Live game state: every monitored game's official state, to the second -->
+    <section id="live-state" class="live-state-wrap" aria-label="Official live game state"></section>
+
     <section id="feed-stats" class="reviews-summary-bar"></section>
 
     <nav id="feed-tabs" class="tabs" aria-label="Filter feed"></nav>
@@ -58,6 +62,41 @@
     <section id="feed-list" class="feed-list" aria-live="polite"></section>
 
     <div id="status-line" class="status-line"></div>
+
+    <!-- Official scoring: pending rulings and scoring changes, kept separate from
+         the alert feed with its own storage, its own poll loop and its own sound. -->
+    <section id="scoring-section" class="scoring-section" aria-label="Official scoring log">
+      <div class="section-head">
+        <h2>✏️ Official Scoring — pending rulings &amp; scoring changes</h2>
+        <p class="section-sub">
+          Logged separately from the alert feed and kept through refreshes (this browser
+          <em>and</em> the local server store when it is running). Pending rulings are at-bats the
+          API has not classified yet (<code>os_ruling_pending_primary</code> /
+          <code>os_ruling_pending_prior</code>); scoring changes are the official scorer
+          reclassifying an at-bat after the initial call was observed live. History is
+          <strong>never rewritten</strong> — each row keeps the exact official wording before and after.
+        </p>
+        <div class="scoring-controls">
+          <button id="scoring-sound-btn" class="btn btn-ghost" title="Toggle the scoring log's own sound — independent of the alert sound, so switching one off never silences the other">🔊 Scoring sound on</button>
+          <button id="scoring-test-btn" class="btn btn-ghost" title="Sound check for the scoring log only">▶ Test</button>
+          <button id="scoring-refresh-btn" class="btn btn-ghost" title="Scan every game's play-by-play now for pending rulings and scoring changes">Rescan now</button>
+          <span id="scoring-status" class="scoring-status"></span>
+        </div>
+      </div>
+
+      <nav id="scoring-tabs" class="tabs" aria-label="Filter official scoring log">
+        <button class="tab-btn tab-on" data-scoring-tab="all">All</button>
+        <button class="tab-btn" data-scoring-tab="pending">Pending rulings</button>
+        <button class="tab-btn" data-scoring-tab="change">Scoring changes</button>
+        <button class="tab-btn" data-scoring-tab="log">Activity log</button>
+      </nav>
+
+      <div id="scoring-list" class="scoring-list" aria-live="polite"></div>
+      <div id="scoring-empty" class="feed-empty" hidden>
+        Nothing logged yet on this date. Pending rulings and scoring changes appear here as soon as
+        a game's play-by-play publishes them.
+      </div>
+    </section>
   </main>
 
   <footer class="site-footer">
@@ -116,6 +155,10 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/game-state.js"></script>
+  <script src="assets/js/chime.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
+  <script src="assets/js/scoring-ui.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

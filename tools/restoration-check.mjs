@@ -19,7 +19,7 @@ let failures = 0;
 const ok = (cond, msg) => { console.log((cond ? 'PASS' : 'FAIL') + ' ' + msg); if (!cond) failures += 1; };
 
 // 1. local references
-const pages = ['index.html', 'game.html', 'reviews.html', '404.html', 'flagged.html'];
+const pages = ['index.html', 'game.html', 'reviews.html', 'scoring.html', '404.html', 'flagged.html'];
 const refs = new Set();
 for (const page of pages) {
   const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
@@ -64,9 +64,29 @@ try {
   ok(post.status === 200 && JSON.parse(post.body).ok === true, 'server: POST /api/feed-log');
   const get = await req('GET', '/api/feed-log?date=2024-06-01');
   ok(get.status === 200 && JSON.parse(get.body).date === '2024-06-01', 'server: GET /api/feed-log round-trip');
-  for (const p of ['/', '/index.html', '/game.html', '/reviews.html', '/flagged.html',
+
+  /* The official-scoring store is a SEPARATE endpoint and file: a write here
+   * must never touch the feed log, and both must round-trip independently. */
+  const scorePost = await req('POST', '/api/scoring-log', JSON.stringify({
+    v: 1, date: '2024-06-01', savedAt: Date.now(),
+    records: [{ id: '824638:12:pending', kind: 'pending', status: 'open', gamePk: 824638,
+      at: 1735689600000, atClock: '00:00:00', wordingBefore: 'Official Scorer Ruling Pending' }],
+  }));
+  ok(scorePost.status === 200 && JSON.parse(scorePost.body).ok === true, 'server: POST /api/scoring-log');
+  const scoreGet = await req('GET', '/api/scoring-log?date=2024-06-01');
+  const scoreBody = scoreGet.status === 200 ? JSON.parse(scoreGet.body) : {};
+  ok(scoreGet.status === 200 && Array.isArray(scoreBody.records) && scoreBody.records.length === 1,
+    'server: GET /api/scoring-log round-trip');
+  ok(Array.isArray(scoreBody.records) && scoreBody.records[0].wordingBefore === 'Official Scorer Ruling Pending',
+    'server: scoring records keep their official wording');
+  const feedAfterScoring = await req('GET', '/api/feed-log?date=2024-06-01');
+  const feedAfterBody = feedAfterScoring.status === 200 ? JSON.parse(feedAfterScoring.body) : {};
+  ok(feedAfterScoring.status === 200 && Array.isArray(feedAfterBody.entries),
+    'server: the feed log still reads back after a scoring-log write');
+  for (const p of ['/', '/index.html', '/game.html', '/reviews.html', '/scoring.html', '/flagged.html',
                    '/assets/css/style.css', '/assets/js/api.js', '/assets/js/game.js',
-                   '/assets/js/scoreboard.js', '/assets/js/reviews-feed.js']) {
+                   '/assets/js/scoreboard.js', '/assets/js/reviews-feed.js',
+                   '/assets/js/live-state.js', '/assets/js/scoring-log.js', '/assets/js/scoring.js']) {
     const res = await req('GET', p);
     ok(res.status === 200 && res.body.length > 0, `server: GET ${p} -> 200`);
   }

@@ -244,6 +244,10 @@ console.log(`jsdom-render-test: ${LIVE ? 'LIVE official API' : 'fixtures'} mode`
   check('reviews: tabs rendered', doc.querySelectorAll('#feed-tabs button, #feed-tabs .tab-btn, #feed-tabs a').length > 0);
   check('reviews: summary stats rendered', textOf(doc.querySelector('#feed-stats')).length > 0);
   check('reviews: sound toggle present', !!doc.querySelector('#sound-toggle-btn'));
+  check('reviews: test-sound button present', !!doc.querySelector('#sound-test-btn'));
+  check('reviews: live-state board rendered for the slate',
+    /Live game state/.test(textOf(doc.querySelector('#live-state-board'))),
+    textOf(doc.querySelector('#live-state-board')).slice(0, 160));
   check('reviews: notification toggle present', !!doc.querySelector('#notify-toggle-btn'));
   check('reviews: countdown element present', !!doc.querySelector('#countdown'));
   check('reviews: live indicator present', !!doc.querySelector('#live-dot'));
@@ -288,6 +292,24 @@ console.log(`jsdom-render-test: ${LIVE ? 'LIVE official API' : 'fixtures'} mode`
   const picker = (doc.querySelector('#date-picker') || {}).value;
   check('reviews?date=garbage: falls back to a valid ISO date', /^\d{4}-\d{2}-\d{2}$/.test(picker || ''), String(picker));
   check('reviews?date=garbage: no uncaught errors', errors.length === 0, errors.join(' | '));
+  close();
+}
+
+/* 3c. Official scoring log page — its own store, its own sections */
+{
+  const { doc, errors, close, window } = await render('scoring.html', { query: '?date=2026-08-28', wait: 900 });
+  check('scoring: page shell rendered', !!doc.querySelector('#score-stats'));
+  check('scoring: pending section present', !!doc.querySelector('#pending-list'));
+  check('scoring: changes section present', !!doc.querySelector('#changes-list'));
+  check('scoring: two sections are separate elements',
+    doc.querySelector('#pending-list') !== doc.querySelector('#changes-list'));
+  check('scoring: storage note rendered', textOf(doc.querySelector('#store-note')).length > 0);
+  check('scoring: page owns its store and never loads the alert feed',
+    !!window.ScoringPage && !!window.ScoringLog && !!window.LiveState && !window.ReplayFeed);
+  check('scoring: empty state explains what will appear',
+    /pending rulings logged|Official wording/.test(textOf(doc.querySelector('#pending-list'))),
+    textOf(doc.querySelector('#pending-list')).slice(0, 160));
+  check('scoring: no uncaught errors', errors.length === 0, errors.join(' | '));
   close();
 }
 

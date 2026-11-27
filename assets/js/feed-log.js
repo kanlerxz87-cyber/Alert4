@@ -36,6 +36,8 @@
       irregularities: {},
       grace: {},
       settled: [],
+      /* second-precision live-state journal: { [gamePk]: { latest, history } } */
+      live: {},
     };
   }
 
@@ -75,7 +77,36 @@
       irregularities: (payload.irregularities && typeof payload.irregularities === 'object') ? payload.irregularities : {},
       grace: (payload.grace && typeof payload.grace === 'object') ? payload.grace : {},
       settled: Array.isArray(payload.settled) ? payload.settled.slice() : [],
+      live: (payload.live && typeof payload.live === 'object') ? payload.live : {},
     };
+  }
+
+  /* Merge the per-game live-state journals.  The snapshot with the newer
+   * observation time wins "latest"; histories are unioned by observation time
+   * so a refresh, a second tab or a server round-trip cannot lose a capture. */
+  function mergeLive(a, b) {
+    var out = {};
+    function historyOf(entry) {
+      return (entry && Array.isArray(entry.history)) ? entry.history : [];
+    }
+    function take(pk, entry) {
+      if (!entry || !entry.latest) return;
+      var prev = out[pk];
+      if (!prev) { out[pk] = entry; return; }
+      var newer = (Number(entry.latest.at) || 0) >= (Number(prev.latest.at) || 0) ? entry : prev;
+      var older = newer === entry ? prev : entry;
+      var byAt = Object.create(null);
+      historyOf(older).concat(historyOf(newer)).forEach(function (snap) {
+        if (snap && snap.at) byAt[snap.at] = snap;
+      });
+      var history = Object.keys(byAt).map(function (k) { return byAt[k]; })
+        .sort(function (x, y) { return (Number(x.at) || 0) - (Number(y.at) || 0); })
+        .slice(-60);
+      out[pk] = Object.assign({}, older, newer, { history: history });
+    }
+    Object.keys(a || {}).forEach(function (pk) { take(pk, a[pk]); });
+    Object.keys(b || {}).forEach(function (pk) { take(pk, b[pk]); });
+    return out;
   }
 
   function entryKey(entry) {
@@ -154,6 +185,7 @@
       irregularities: irregularities,
       grace: grace,
       settled: Object.keys(settledSet),
+      live: mergeLive(base.live, add.live),
     };
   }
 
@@ -315,6 +347,7 @@
     emptyPayload: emptyPayload,
     normalize: normalize,
     mergePayloads: mergePayloads,
+    mergeLive: mergeLive,
     load: load,
     save: save,
     onChange: onChange,

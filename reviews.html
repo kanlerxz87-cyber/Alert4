@@ -36,7 +36,9 @@
     </div>
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
-      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <a class="btn btn-ghost" href="scoring.html" title="Official scoring log — pending rulings and scoring changes, kept in a separate persistent store">✏️ Scoring Log</a>
+      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle the alert sound — a ~3 second raindrop for every new event that appears in this feed (challenges, umpire reviews, boundary calls, ABS pitch challenges, official-scorer pending rulings and official scoring changes), plus a warning chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-test-btn" class="btn btn-ghost" title="Play the alert chime once to test that sound works, whether the toggle is on or off">🔔 Test Sound</button>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
@@ -49,6 +51,8 @@
   <div id="banner" class="banner"></div>
 
   <main class="reviews-main">
+    <section id="live-state-board" class="live-state-wrap" aria-live="off"></section>
+
     <section id="active-strip" class="active-strip-wrap"></section>
 
     <section id="feed-stats" class="reviews-summary-bar"></section>
@@ -56,6 +60,8 @@
     <nav id="feed-tabs" class="tabs" aria-label="Filter feed"></nav>
 
     <section id="feed-list" class="feed-list" aria-live="polite"></section>
+
+    <p id="sound-test-note" class="feed-note" role="status"></p>
 
     <div id="status-line" class="status-line"></div>
   </main>
@@ -107,6 +113,22 @@
       scoring baselines and the flagged irregularities before the first scan runs; the log holds
       only observed payload data, and anything malformed in it is dropped with a console warning
       rather than guessed.
+      <strong>Latency</strong>: while any game is live the official status projection is polled every
+      <strong>125&nbsp;ms</strong> (the fastest honest signal — MLB flips <code>status.statusCode</code> the
+      moment a challenge is called, before the play text exists) and a flip immediately triggers its own
+      play-by-play fetch; the play-by-play scan runs every <strong>250&nbsp;ms</strong>. With no live game the
+      sweep relaxes to 1&nbsp;s, every poll pauses in a hidden tab, preview/final games back off, and an
+      HTTP&nbsp;429 quiet period is honoured, so the request budget stays well inside the API's terms. The
+      status line shows the measured sweep round-trip and the API p50/p95, never a claimed figure.
+      <strong>Live state</strong>: every poll is stored as a second-precision snapshot (score, inning, outs,
+      count, pitch count, pitcher, batter, current at-bat and the official last-play wording) and the board
+      above the feed shows every game on the slate, so the state is captured as it happens and restored
+      after a refresh.
+      <strong>Official scoring log</strong>: pending rulings and scoring changes are also written to a
+      <em>separate</em> store (<code>scoring-log.js</code> → <code>localStorage</code> plus
+      <code>/api/scoring-log</code>) and shown on <a href="scoring.html">scoring.html</a>. That store is
+      written only after every alert for the poll has been raised, has its own error handling, and plays no
+      sound, so it can never delay, reset or silence an alert.
       Not affiliated with MLB or MLB Advanced Media.
       <a href="flagged.html">⚑ Flagged for Review</a> — verification log and unverified items.
     </p>
@@ -115,7 +137,9 @@
   <script src="assets/js/api.js"></script>
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
+  <script src="assets/js/live-state.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

@@ -430,3 +430,55 @@ Most recent date with games: Wed Oct 28, 2026"),
   truth for data values; every flagged/unverified item stays published on the Flagged for Review page
   with its source links (§§1–17). Unverified items are non-blocking and none were silently corrected.
 - Post-merge record itself delivered as a follow-up PR from `arena/9572372b-alert4` (linked in the PR list).
+
+---
+
+## Session `arena/be65a669-alert4` — latency, alert sound, second-precision state, isolated scoring log (2026-11-27)
+
+**Branch:** `arena/be65a669-alert4` (from `main` @ `3e53419`). Owner brief: monitor **every** live MLB
+game, receive the fastest feed the StatsAPI allows, alert on every challenge / manager challenge /
+review / umpire review / official-scoring-pending / scoring change, make the alert sound pleasant for
+all-day listening (~3 s raindrop) with an on/off toggle plus a test, capture the official game state to
+the second with the exact official wording before and after, and keep pending rulings + scoring changes
+in a **separate** persistent section that cannot disrupt the alerts.
+
+### Task board
+
+| Task | Status | Files | Notes |
+|---|---|---|---|
+| L-1 Fastest feed within TOS | done | `assets/js/api.js`, `assets/js/reviews-feed.js` | 125 ms official status sweep **only while a game is live** (relaxes to 1 s otherwise), immediate out-of-band play-by-play fetch on a status flip, 250 ms scan, 429 quiet-period back-off, per-game 404 no longer raises a slate-wide error |
+| L-2 Latency is measured | done | `assets/js/api.js` (`latencyStats()`), `assets/js/reviews-feed.js` | every request timed (`performance.now`), sweep round-trip recorded, p50/p95 shown in the status line; `ReplayFeed.latency()` for tests/tools |
+| L-3 TOS budget written down | done | `docs/api-compliance.md` (new), `README.md` | every polling surface, its cadence, its size and the guards enforced in code |
+| A-1 ~3 s raindrop alert | done | `assets/js/reviews-feed.js` (`playRaindrop`) | rain bed + 13 panned droplets + 2 plops, seeded so it sounds the same every time, peak 0.16, 1.2 s cooldown |
+| A-2 Toggle + test | done | `reviews.html`, `assets/js/reviews-feed.js` | existing persisted toggle kept; new **🔔 Test Sound** button plays even while muted and reports missing Web Audio |
+| A-3 Alert on every feed event | done | `assets/js/reviews-feed.js` | ABS pitch challenges now chime too (owner instruction 2026-11-27 supersedes the earlier "not ABS" title) — recorded on `flagged.html` N-3 |
+| S-1 Second-precision state capture | done | `assets/js/live-state.js` (new), `assets/js/feed-log.js`, `server.mjs` | score/inning/outs/count/pitch count/pitcher/batter/at-bat/last play + `at`, ms-ISO and `HH:MM:SS`; bounded journal (120/game) persisted per date and merged by observation time |
+| S-2 All games on a board | done | `assets/js/reviews-feed.js`, `reviews.html`, `assets/css/style.css` | `#live-state-board` shows every game on the slate with its captured state |
+| S-3 Wording before/after | done | `assets/js/reviews-feed.js` | `entry.official.before` / `.after` copied verbatim; late observations labelled, never back-filled |
+| P-1 Separate persistent scoring store | done | `assets/js/scoring-log.js` (new), `server.mjs`, `docs/live-state-and-scoring-log.md` (new) | `mlbp.scoringlog.<date>` + `/api/scoring-log` → `data/scoring-log-<date>.json`, idempotent by record id, 2000-record cap |
+| P-2 Separate site section | done | `scoring.html` (new), `assets/js/scoring.js` (new), `assets/css/style.css`, nav on all pages | pending rulings and scoring changes in two sections, before/after wording, live state at each observation, second-precision stamps, JSON export |
+| P-3 Cannot disrupt alerts | done | `assets/js/reviews-feed.js` (`writeScoringLog` last statement of `ingestGame`) | own store, own try/catch, no audio, no notification, no feed-row writes; `scoring.html` runs its own independent 2 s capture so the log fills even with the feed closed |
+
+### Verification (this session)
+
+- `node tests/run-all.mjs` — syntax (all 10 scripts), link-check **77 local references**, contract-check
+  **11 name/id bindings across 6 pages**, jsdom-render **57/57** (incl. a new `scoring.html` case) → **PASS**.
+- `npm test` (`tools/smoke-test.mjs`) — **75 passed, 0 failed**. New section `[14]` covers LA-1…2
+  (cadence constants + measured latency), LS-1…3 (second-precision snapshot, whole-slate board,
+  before/after wording), AS-1…2 (3 s raindrop constants, test sound while muted), SL-1…4 (separate
+  store, no chime / no feed-row side effects, reload restores journal + records, `scoring.html` renders
+  both sections).
+- `node tools/restoration-check.mjs` — **ALL CHECKS PASSED**, now including `scoring.html`, the three new
+  scripts and a `POST`/`GET /api/scoring-log` round-trip that proves a scoring write leaves the feed log
+  readable.
+- Live `statsapi.mlb.com` was **not** reachable from this sandbox (egress allowlist), so no new network
+  observations are claimed here; every fixture value used by the tests remains the 2026-11-20 captures.
+
+### Notes / open items for the owner
+
+- The StatsAPI publishes **no** rate limit and no written authorization (unchanged, U-10). The 125 ms
+  sweep is now conditional on a live game existing, and `docs/api-compliance.md` records the full budget.
+- `flagged.html` N-3 records the ABS-chime policy change; N-4 records that the raindrop's subjective
+  "pleasantness" was not measured, only its structure/level/cooldown.
+- A server-side watcher (so the log fills with no browser open) is suggested, not implemented — see
+  `docs/live-state-and-scoring-log.md` §5.

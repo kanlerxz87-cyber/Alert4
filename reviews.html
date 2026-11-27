@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MLB Live PBP — Replay Feed</title>
   <meta name="description" content="Live replay review feed for every MLB game: manager challenges, crew chief reviews, umpire reviews, ABS pitch challenges and boundary calls across the whole schedule, chat-style.">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23fff' stroke='%23e03131' stroke-width='6'/%3E%3Cpath d='M50 4 A46 46 0 0 1 96 50 M50 96 A46 46 0 0 1 4 50 M4 50 A46 46 0 0 1 50 4 M96 50 A46 46 0 0 1 50 96' stroke='%23e03131' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23fff' stroke='%23e03131' stroke-width='6'/%3E%3Cpath d='M50 4 A46 46 0 0 1 96 50 M50 96 A46 46 0 0 1 4 50 M4 50 A46 46 0 0 1 50 96' stroke='%23e03131' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
   <!-- Open the data host while the stylesheet is still parsing: each page's
        first request is a cross-origin call to statsapi.mlb.com (assets/js/api.js),
        and preconnect removes that DNS + TCP + TLS setup (one connection setup;
@@ -36,10 +36,16 @@
     </div>
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
-      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle 3-second raindrop chime for every event in the alert feed: challenges, reviews, boundary calls, ABS, official-scorer pending rulings, scoring changes and runs-at-risk">🔇 Sound Off</button>
+      <button id="sound-test-btn" class="btn btn-ghost" title="Play the 3-second raindrop alert sound once to test that the alert system is working">🔔 Test Sound</button>
+      <label class="sound-volume" title="Alert sound volume">
+        <span>Vol</span>
+        <input type="range" id="sound-volume" min="0" max="100" value="50" aria-label="Alert sound volume">
+      </label>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
+      <span id="latency-badge" class="latency-badge" title="Live StatsAPI latency (last / p50 / p95) and request budget — fastest feed within the API Terms of Service">— ms</span>
       <div class="live-pill" title="Polling the MLB StatsAPI">
         <span id="live-dot" class="live-dot"></span><span>LIVE</span>
       </div>
@@ -53,9 +59,62 @@
 
     <section id="feed-stats" class="reviews-summary-bar"></section>
 
+    <!-- Official live game state: every game on the slate, captured live
+         with score / count / outs / batter / pitcher / pitch count and a
+         timestamp down to the second. Before/after wording for every
+         challenge, review, pending ruling and scoring change. -->
+    <section id="live-state-section" class="live-state-section" aria-label="Live game state">
+      <div class="section-head">
+        <h2>📡 Live Game State — all games</h2>
+        <span id="live-state-status" class="section-note">Capturing official state live…</span>
+      </div>
+      <div id="live-state-list" class="live-state-grid"></div>
+    </section>
+
     <nav id="feed-tabs" class="tabs" aria-label="Filter feed"></nav>
 
     <section id="feed-list" class="feed-list" aria-live="polite"></section>
+
+    <!-- Official scoring pending + scoring changes: separate persistent
+         log, independent of the alert system. Survives refreshes. -->
+    <section id="scoring-log-section" class="scoring-log-section" aria-label="Official scoring log">
+      <div class="section-head">
+        <h2>✏️ Official Scoring Log — pending &amp; changes</h2>
+        <span id="scoring-log-status" class="section-note">Separate persistent log · survives refresh</span>
+      </div>
+      <p class="section-desc">
+        Official-scorer pending rulings (hit vs. error undecided) and official scoring changes
+        (hit ↔ error, out ↔ hit, single ↔ double, etc.) captured in real time from the MLB API.
+        This log is <strong>separate from the alert system</strong> — muting the sound never stops
+        logging, and a logging hiccup never silences alerts. It persists in this browser
+        (and on the server when <code>server.mjs</code> is running) across refreshes.
+      </p>
+      <div class="scoring-log-actions">
+        <button id="scoring-export-json" class="btn btn-ghost" title="Download the scoring log as JSON">⬇ JSON</button>
+        <button id="scoring-export-csv" class="btn btn-ghost" title="Download the scoring log as CSV">⬇ CSV</button>
+        <button id="scoring-clear" class="btn btn-ghost" title="Clear the local scoring log for this date">Clear</button>
+        <span id="scoring-log-count" class="section-note"></span>
+      </div>
+      <div id="scoring-log-list" class="scoring-log-list"></div>
+    </section>
+
+    <!-- Latency / TOS panel: proves the fastest feed stays within bounds. -->
+    <section id="latency-panel" class="latency-panel" aria-label="Latency and API budget">
+      <div class="section-head">
+        <h2>⚡ Latency &amp; API budget</h2>
+        <span class="section-note">Fastest feed within the MLB StatsAPI Terms of Service</span>
+      </div>
+      <div id="latency-details" class="latency-details">Loading latency…</div>
+      <p class="section-desc">
+        The 125 ms lean status sweep (<code>GET /api/v1/schedule</code> with a <code>fields</code>
+        projection, ~2.4 KB) is the fastest signal that a review was called — MLB flips
+        <code>status.statusCode</code> instantly, while play text lands at resolution. Play-by-play
+        uses the lean <code>/playByPlay</code> endpoint with a tight projection (not the 1–2 MB
+        full feed), staggered per game, with a concurrency governor (6), request deduplication,
+        1-hour caching of static registries, and full HTTP 429 + <code>Retry-After</code> handling.
+        Polling pauses when the tab is hidden. Only public, keyless StatsAPI endpoints are used.
+      </p>
+    </section>
 
     <div id="status-line" class="status-line"></div>
   </main>
@@ -86,7 +145,8 @@
       home, a wild pitch) are excluded, and whether replay actually removes a run is never predicted.
       <strong>Official scoring changes</strong> (a hit reclassified as an error or vice versa, a
       single changed to a double or back, a base hit changed to a fielder's choice + error, an out
-      changed to a hit, and so on) are tracked in the ✏️ Scoring Changes tab and in the All feed by
+      changed to a hit, and so on) are tracked in the ✏️ Scoring Changes tab, in the All feed, and in the
+      separate <strong>✏️ Official Scoring Log</strong> section below the feed by
       snapshotting every completed play's official classification (<code>result.eventType</code> /
       <code>result.isOut</code> / <code>count.outs</code> / error movements in <code>runners[]</code>)
       on every poll and diffing it against the previous polls — the StatsAPI payload carries no
@@ -102,6 +162,15 @@
       rulings published after the game. Payload edits without a reclassification (description /
       RBI / score only) and plays that vanish from the payload are flagged as irregularities for
       review, never corrected or hidden.
+      <strong>Live game state</strong> (score, count, outs, batter, pitcher, pitch count, bases,
+      inning — timestamped down to the second) is captured for every game on the slate on every
+      poll and shown in the <strong>📡 Live Game State</strong> section; every challenge, review,
+      pending ruling and scoring change keeps its exact official wording <strong>before and after</strong>.
+      The <strong>alert sound</strong> is a single pleasant 3-second raindrop chime (synthesized
+      locally, no audio files) that fires for every event in the alert feed; toggle it on/off or
+      press <strong>🔔 Test Sound</strong> to verify it. The <strong>scoring log</strong> is a
+      separate persistent system (own localStorage keys + own <code>/api/scoring-log</code>
+      endpoints) so it survives refreshes without ever disrupting the alert system.
       Every tracked entry is also logged to this browser (one log per date, newest seven dates
       kept, 500 most-recent rows) so a refresh or a later visit restores the feed rows, the
       scoring baselines and the flagged irregularities before the first scan runs; the log holds
@@ -116,6 +185,9 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/alert-sound.js"></script>
+  <script src="assets/js/game-state.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

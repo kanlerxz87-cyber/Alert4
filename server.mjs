@@ -2,12 +2,17 @@
 /* ============================================================================
  * server.mjs — HTTP server for MLB Live PBP with persistent feed logging.
  *
- * Serves static web assets and provides a shared persistence backend for
- * reviews, challenges, official-scorer pending rulings, and scoring changes.
+ * Serves static web assets and provides shared persistence backends for:
+ *   - the alert feed (reviews, challenges, pending rulings, scoring
+ *     changes) in data/feed-log-<YYYY-MM-DD>.json, and
+ *   - the SEPARATE official scoring log (pending rulings + scoring changes
+ *     only) in data/scoring-log-<YYYY-MM-DD>.json.
  *
- * Persisted state lives in data/feed-log-<YYYY-MM-DD>.json so that any
- * client/browser visiting the website immediately receives all tracked
- * entries, scoring changes, and baselines across browsers and sessions.
+ * The two stores are independent: the scoring log has its own files, its
+ * own merge logic and its own SSE stream (/api/scoring-log/stream), so it
+ * survives refreshes and server restarts without ever disrupting the alert
+ * system, and vice versa. Any client/browser visiting the website
+ * immediately receives all tracked entries across browsers and sessions.
  * ==========================================================================*/
 
 import http from 'node:http';
@@ -65,6 +70,11 @@ function getLogFilePath(dateStr) {
   return path.join(DATA_DIR, `feed-log-${dateStr}.json`);
 }
 
+function getScoringLogFilePath(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  return path.join(DATA_DIR, `scoring-log-${dateStr}.json`);
+}
+
 function readLogFromDisk(dateStr) {
   const filePath = getLogFilePath(dateStr);
   if (!filePath || !fs.existsSync(filePath)) return null;
@@ -73,6 +83,18 @@ function readLogFromDisk(dateStr) {
     return JSON.parse(raw);
   } catch (err) {
     console.warn(`[server] failed to read feed log for ${dateStr}:`, err);
+    return null;
+  }
+}
+
+function readScoringLogFromDisk(dateStr) {
+  const filePath = getScoringLogFilePath(dateStr);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    const raw = fs.readFileSync(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    console.warn(`[server] failed to read scoring log for ${dateStr}:`, err);
     return null;
   }
 }
@@ -191,6 +213,55 @@ function mergeFeedLogPayloads(existing, incoming, dateStr) {
   };
 }
 
+/**
+ * Merge an incoming scoring-log payload idempotently. The scoring log holds
+ * ONLY official-scorer pending rulings and scoring changes (each with exact
+ * before/after official wording) and is fully independent of the feed log.
+ */
+function mergeScoringLogPayloads(existing, incoming, dateStr) {
+  const now = Date.now();
+  const incomingEntries = Array.isArray(incoming.entries) ? incoming.entries : [];
+  if (!existing || typeof existing !== 'object' || existing.v !== 1) {
+    return {
+      v: 1,
+      date: dateStr,
+      savedAt: now,
+      entries: incomingEntries,
+      order: incomingEntries.map((e) => (e && e.id !== undefined && e.id !== null && e.id !== '' ? String(e.id) : null)).filter(Boolean),
+    };
+  }
+  const entryMap = new Map();
+  const orderList = [];
+  function makeKey(entry) {
+    if (!entry || entry.id === undefined || entry.id === null || entry.id === '') return null;
+    return String(entry.id);
+  }
+  (Array.isArray(existing.entries) ? existing.entries : []).forEach((e) => {
+    const k = makeKey(e);
+    if (!k) return;
+    entryMap.set(k, e);
+    if (!orderList.includes(k)) orderList.push(k);
+  });
+  incomingEntries.forEach((e) => {
+    const k = makeKey(e);
+    if (!k) return;
+    const prev = entryMap.get(k);
+    if (!prev) {
+      entryMap.set(k, e);
+      if (!orderList.includes(k)) orderList.push(k);
+    } else {
+      entryMap.set(k, {
+        ...prev,
+        ...e,
+        firstSeen: Math.min(prev.firstSeen || e.firstSeen || now, e.firstSeen || prev.firstSeen || now),
+        lastSeen: Math.max(prev.lastSeen || 0, e.lastSeen || 0, now),
+      });
+    }
+  });
+  const entries = orderList.map((k) => entryMap.get(k)).filter(Boolean);
+  return { v: 1, date: dateStr, savedAt: now, entries, order: orderList };
+}
+
 /* --------------------------------------------------------------- push (SSE)
  * Live tail of the shared feed log. Polling it (GET /api/feed-log) leaves a
  * window of up to the poll interval between "another browser/session wrote an
@@ -203,6 +274,7 @@ function mergeFeedLogPayloads(existing, incoming, dateStr) {
  * does not exist).
  */
 const sseClients = new Set(); // { res, date }
+const scoringSseClients = new Set(); // { res, date } — separate stream, separate system
 
 function sseWrite(res, chunk) {
   try {
@@ -225,6 +297,24 @@ function broadcastFeedLog(dateStr, payload) {
   const frame = `event: feed-log\ndata: ${body}\n\n`;
   let sent = 0;
   sseClients.forEach((client) => {
+    if (client.date !== dateStr) return;
+    if (sseWrite(client.res, frame)) sent += 1;
+  });
+  return sent;
+}
+
+function broadcastScoringLog(dateStr, payload) {
+  if (!scoringSseClients.size) return 0;
+  let body;
+  try {
+    body = JSON.stringify(payload);
+  } catch (err) {
+    console.warn(`[server] could not serialize the scoring log for push:`, err);
+    return 0;
+  }
+  const frame = `event: scoring-log\ndata: ${body}\n\n`;
+  let sent = 0;
+  scoringSseClients.forEach((client) => {
     if (client.date !== dateStr) return;
     if (sseWrite(client.res, frame)) sent += 1;
   });
@@ -258,6 +348,30 @@ function writeLogToDisk(dateStr, payload) {
   }
 }
 
+function writeScoringLogToDisk(dateStr, payload) {
+  const filePath = getScoringLogFilePath(dateStr);
+  if (!filePath) return false;
+  try {
+    const existing = readScoringLogFromDisk(dateStr);
+    const merged = mergeScoringLogPayloads(existing, payload, dateStr);
+    const serialized = JSON.stringify(merged, null, 2);
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, serialized, 'utf8');
+    fs.renameSync(tempPath, filePath);
+    const indexPath = path.join(DATA_DIR, 'scoring-log-index.json');
+    let index = {};
+    if (fs.existsSync(indexPath)) {
+      try { index = JSON.parse(fs.readFileSync(indexPath, 'utf8')) || {}; } catch (_) {}
+    }
+    index[dateStr] = merged.savedAt;
+    fs.writeFileSync(indexPath, JSON.stringify(index, null, 2), 'utf8');
+    return merged;
+  } catch (err) {
+    console.error(`[server] failed to write scoring log for ${dateStr}:`, err);
+    return false;
+  }
+}
+
 const server = http.createServer((req, res) => {
   // CORS Preflight
   if (req.method === 'OPTIONS') {
@@ -278,7 +392,101 @@ const server = http.createServer((req, res) => {
 
   // Health check
   if (pathname === '/api/health') {
-    sendJSON(res, 200, { status: 'ok', uptime: process.uptime() });
+    sendJSON(res, 200, {
+      status: 'ok',
+      uptime: process.uptime(),
+      feedLogClients: sseClients.size,
+      scoringLogClients: scoringSseClients.size,
+    });
+    return;
+  }
+
+  // GET /api/scoring-log/stream?date=YYYY-MM-DD — SSE tail of the SEPARATE
+  // scoring log. Independent stream, independent system: a scoring-log
+  // hiccup never affects the alert feed, and vice versa.
+  if (pathname === '/api/scoring-log/stream' && req.method === 'GET') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+      return;
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+      'Access-Control-Allow-Origin': '*',
+    });
+    sseWrite(res, `retry: 3000\nevent: connected\ndata: {"date":"${dateStr}"}\n\n`);
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
+    const client = { res, date: dateStr };
+    scoringSseClients.add(client);
+    const heartbeat = setInterval(() => { sseWrite(res, ': hb\n\n'); }, 20000);
+    if (typeof heartbeat.unref === 'function') heartbeat.unref();
+    const cleanup = () => {
+      clearInterval(heartbeat);
+      scoringSseClients.delete(client);
+    };
+    req.on('close', cleanup);
+    req.on('error', cleanup);
+    res.on('close', cleanup);
+    const current = readScoringLogFromDisk(dateStr);
+    if (current) sseWrite(res, `event: scoring-log\ndata: ${JSON.stringify(current)}\n\n`);
+    return;
+  }
+
+  // GET /api/scoring-log?date=YYYY-MM-DD
+  if (pathname === '/api/scoring-log' && req.method === 'GET') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+      return;
+    }
+    const log = readScoringLogFromDisk(dateStr);
+    if (log) {
+      sendJSON(res, 200, log);
+    } else {
+      sendJSON(res, 200, { v: 1, date: dateStr, savedAt: Date.now(), entries: [], order: [] });
+    }
+    return;
+  }
+
+  // POST /api/scoring-log
+  if (pathname === '/api/scoring-log' && req.method === 'POST') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 50 * 1024 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        if (!payload || typeof payload !== 'object' || payload.v !== 1 || !payload.date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+          sendError(res, 400, 'Invalid payload: must be object with v: 1 and valid date (YYYY-MM-DD)');
+          return;
+        }
+        const saved = writeScoringLogToDisk(payload.date, payload);
+        if (saved) {
+          const pushed = broadcastScoringLog(payload.date, saved);
+          sendJSON(res, 200, {
+            ok: true,
+            date: payload.date,
+            savedAt: saved.savedAt,
+            entriesCount: saved.entries.length,
+            pushed,
+          });
+        } else {
+          sendError(res, 500, 'Failed to save scoring log to disk');
+        }
+      } catch (err) {
+        sendError(res, 400, `JSON parse error: ${err.message}`);
+      }
+    });
     return;
   }
 

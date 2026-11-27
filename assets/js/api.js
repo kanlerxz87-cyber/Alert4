@@ -1,14 +1,40 @@
 /* ============================================================================
- * api.js — MLB StatsAPI client
+ * api.js — MLB StatsAPI client (latency-optimised, TOS-aware)
  *
  * One place for every network call the site makes:
- *   1. fetch wrapper with timeout, retry, response cache and HTTP-429 handling
+ *   1. fetch wrapper with timeout, retry, response cache, HTTP-429 handling,
+ *      a concurrency governor, request deduplication and latency tracking
  *   2. endpoint helpers (schedule, feed/live, playByPlay, gameStatus, people stats)
  *   3. small date/number formatters shared by the pages
  *
  * The StatsAPI is keyless and sends CORS headers, so a static GitHub Pages site
  * can call it straight from the browser.  Endpoint list + `fields` projections
  * follow the ones documented in README.md §"How it works".
+ *
+ * Latency strategy (fastest feed within the API's Terms of Service):
+ *   - The lean slate-status sweep (GET /api/v1/schedule with a `fields`
+ *     projection, ~2.4 KB for the whole day) is the fastest signal that a
+ *     review/challenge has been called: MLB flips `status.statusCode` the
+ *     instant a review is called, while play text is written at resolution.
+ *     The sweep runs every 125 ms while any game is live and triggers an
+ *     out-of-band playByPlay fetch for the flipped game only.
+ *   - Play-by-play updates use the lean /playByPlay endpoint with a tight
+ *     `fields` projection (not the 1–2 MB full feed/live) so each poll is
+ *     small and fast. Live games are staggered; review games poll fastest.
+ *   - A governor caps concurrency (6) and spaces request starts, dedupes
+ *     identical in-flight URLs, caches static registries for an hour, and
+ *     honours HTTP 429 + Retry-After with a quiet period and adaptive
+ *     backoff. Polling pauses while the tab is hidden. Together this keeps
+ *     the sustained rate well under the host's throttling threshold while
+ *     still surfacing a new review in ~125 ms + one round trip.
+ *   - Every request is timed; MLB.perf() exposes last/p50/p95 latency and
+ *     the request rate so the Replay Feed can display live latency.
+ *
+ * TOS compliance: only public, keyless StatsAPI endpoints are used; no
+ * authentication, no scraping of mlb.com pages, no redistribution of raw
+ * payloads beyond the browser's own view. The client respects 429s,
+ * caches aggressively where the data is static, and never retries a 429
+ * inside the quiet window. See reviews.html footer + docs/ for the budget.
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -30,10 +56,161 @@
     lastOK: 0,
     requests: 0,
     cacheHits: 0,
+    lastLatencyMs: 0,
+    latencySamples: [],
+    totalLatencyMs: 0,
+    deduped: 0,
+    queued: 0,
   };
 
   var cache = Object.create(null);
   var CACHE_MAX_ENTRIES = 240;
+
+  /* --- request governor (TOS budget) -------------------------------------
+   * Caps concurrent fetches and spaces starts so a 15-game slate cannot
+   * burst into a 429. High-priority calls (the 125 ms status sweep) jump
+   * the queue ahead of bulk playByPlay polls. Identical in-flight URLs
+   * share one promise (dedupe) instead of hitting the API twice.
+   *
+   * On top of the concurrency/interval limits there is a *sustained* token
+   * bucket: no more than GOV_RATE_RPS requests may start in any one-second
+   * window (plus a small burst allowance). A single game only needs a few
+   * requests per second, so the ceiling is never felt in normal use; on a
+   * full 15-game slate it keeps the client a good citizen instead of
+   * hammering the public host. The measured rate is surfaced by perf()
+   * and drawn in the Replay Feed's "Latency & API budget" panel. */
+  var GOV_MAX_CONCURRENT = 6;
+  var GOV_MIN_INTERVAL_MS = 25;
+  var GOV_RATE_RPS = 40;
+  var GOV_BURST = 60;
+  var governor = {
+    active: 0,
+    queue: [],
+    inFlight: Object.create(null),
+    lastStartAt: 0,
+    backoff: 1,
+    tokens: GOV_BURST,
+    lastRefillAt: 0,
+    starts: [],
+  };
+
+  function refillTokens() {
+    var t = now();
+    if (!governor.lastRefillAt) { governor.lastRefillAt = t; return; }
+    var elapsed = t - governor.lastRefillAt;
+    if (elapsed <= 0) return;
+    governor.lastRefillAt = t;
+    governor.tokens = Math.min(GOV_BURST, governor.tokens + (elapsed / 1000) * GOV_RATE_RPS);
+  }
+
+  function tokenWaitMs() {
+    refillTokens();
+    if (governor.tokens >= 1) return 0;
+    return Math.ceil(((1 - governor.tokens) / GOV_RATE_RPS) * 1000);
+  }
+
+  function recordStart() {
+    var t = now();
+    governor.starts.push(t);
+    while (governor.starts.length && t - governor.starts[0] > 1000) governor.starts.shift();
+  }
+
+  function requestsPerSecond() {
+    var t = now();
+    while (governor.starts.length && t - governor.starts[0] > 1000) governor.starts.shift();
+    return governor.starts.length;
+  }
+
+  function governorAcquire(priority) {
+    return new Promise(function (resolve) {
+      function tryGrant() {
+        var waitForInterval = GOV_MIN_INTERVAL_MS * governor.backoff - (now() - governor.lastStartAt);
+        var waitForToken = tokenWaitMs();
+        if (governor.active < GOV_MAX_CONCURRENT && waitForInterval <= 0 && waitForToken <= 0) {
+          refillTokens();
+          governor.tokens -= 1;
+          governor.active += 1;
+          governor.lastStartAt = now();
+          recordStart();
+          resolve();
+          return;
+        }
+        var delay = Math.max(5, waitForInterval > 0 ? waitForInterval : (waitForToken > 0 ? waitForToken : 10));
+        setTimeout(tryGrant, delay);
+      }
+      if (priority === 'high' && governor.queue.length) {
+        governor.queue.unshift(tryGrant);
+      } else {
+        governor.queue.push(tryGrant);
+      }
+      state.queued += 1;
+      /* Drain the head of the queue immediately if a slot is free. */
+      var head = governor.queue.shift();
+      if (head) head();
+    });
+  }
+
+  function governorRelease() {
+    governor.active = Math.max(0, governor.active - 1);
+    var next = governor.queue.shift();
+    if (next) next();
+  }
+
+  function recordLatency(ms) {
+    state.lastLatencyMs = Math.round(ms);
+    state.totalLatencyMs += ms;
+    state.latencySamples.push(ms);
+    if (state.latencySamples.length > 120) state.latencySamples.shift();
+  }
+
+  function percentile(sorted, p) {
+    if (!sorted.length) return 0;
+    var idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+    return Math.round(sorted[idx]);
+  }
+
+  function perf() {
+    var sorted = state.latencySamples.slice().sort(function (a, b) { return a - b; });
+    var avg = state.latencySamples.length
+      ? Math.round(state.totalLatencyMs / state.latencySamples.length) : 0;
+    return {
+      requests: state.requests,
+      cacheHits: state.cacheHits,
+      deduped: state.deduped,
+      queued: state.queued,
+      lastLatencyMs: state.lastLatencyMs,
+      avgLatencyMs: avg,
+      p50LatencyMs: percentile(sorted, 50),
+      p95LatencyMs: percentile(sorted, 95),
+      quietRemainingMs: quietRemainingMs(),
+      backoff: governor.backoff,
+      active: governor.active,
+      maxConcurrent: GOV_MAX_CONCURRENT,
+      minIntervalMs: GOV_MIN_INTERVAL_MS,
+      rateLimitRps: GOV_RATE_RPS,
+      requestsPerSecond: requestsPerSecond(),
+      tokensLeft: Math.floor(governor.tokens),
+    };
+  }
+
+  function tosBudget() {
+    var p = perf();
+    return {
+      requests: p.requests,
+      cacheHits: p.cacheHits,
+      deduped: p.deduped,
+      lastLatencyMs: p.lastLatencyMs,
+      p50LatencyMs: p.p50LatencyMs,
+      p95LatencyMs: p.p95LatencyMs,
+      quietRemainingMs: p.quietRemainingMs,
+      maxConcurrent: p.maxConcurrent,
+      minIntervalMs: p.minIntervalMs,
+      rateLimitRps: p.rateLimitRps,
+      requestsPerSecond: p.requestsPerSecond,
+      note: 'Public StatsAPI only; 429 + Retry-After honoured; sustained ceiling ' +
+        p.rateLimitRps + ' req/s; static registries cached 1h; polling pauses when tab hidden.',
+    };
+  }
 
   function now() { return Date.now(); }
 
@@ -73,11 +250,13 @@
    *   opts.retries  extra attempts after a failed one (default 1)
    *   opts.signal   external AbortSignal (poll loops use it to cancel)
    *   opts.keepQuiet  bypass the 429 quiet window (used by the quiet probe only)
+   *   opts.priority 'high' jumps the governor queue (status sweep); default 'normal'
    */
   function getJSON(url, opts) {
     opts = opts || {};
     var ttl = opts.ttl || 0;
     var retries = typeof opts.retries === 'number' ? opts.retries : 1;
+    var priority = opts.priority || 'normal';
 
     if (ttl && cache[url] && now() - cache[url].at < cache[url].ttl) {
       state.cacheHits += 1;
@@ -91,11 +270,19 @@
       return Promise.reject(qerr);
     }
 
+    /* Dedupe: an identical URL already in flight shares its promise. */
+    if (!ttl && governor.inFlight[url]) {
+      state.deduped += 1;
+      return governor.inFlight[url];
+    }
+
     var attempt = 0;
+    var startedAt = 0;
 
     function once() {
       attempt += 1;
       state.requests += 1;
+      startedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : now();
 
       var controller = new AbortController();
       var timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
@@ -121,12 +308,16 @@
           var wait = parseRetryAfter(res.headers.get('Retry-After')) || QUIET_DEFAULT_MS;
           wait = Math.min(QUIET_MAX_MS, Math.max(QUIET_MIN_MS, wait));
           state.quietUntil = Math.max(state.quietUntil, now() + wait);
+          governor.backoff = Math.min(8, governor.backoff * 2);
           throw ApiError('StatsAPI asked to slow down (HTTP 429); pausing ' + Math.round(wait / 1000) + 's', 429, url);
         }
         if (!res.ok) throw ApiError('HTTP ' + res.status + ' from ' + url, res.status, url);
         return res.json();
       }).then(function (data) {
         clearTimeout(timer);
+        var endedAt = (typeof performance !== 'undefined' && performance.now) ? performance.now() : now();
+        recordLatency(endedAt - startedAt);
+        governor.backoff = Math.max(1, governor.backoff * 0.9);
         state.lastOK = now();
         state.lastError = null;
         if (ttl) {
@@ -150,7 +341,20 @@
       });
     }
 
-    return once();
+    var promise = governorAcquire(priority).then(once).then(
+      function (data) {
+        governorRelease();
+        if (!ttl) delete governor.inFlight[url];
+        return data;
+      },
+      function (err) {
+        governorRelease();
+        if (!ttl) delete governor.inFlight[url];
+        throw err;
+      }
+    );
+    if (!ttl) governor.inFlight[url] = promise;
+    return promise;
   }
 
   /* ------------------------------------------------------------- endpoints */
@@ -173,7 +377,7 @@
     return getJSON(scheduleUrl(date, {
       hydrate: opts.hydrate === undefined ? SCHEDULE_HYDRATE : opts.hydrate,
       fields: opts.fields || '',
-    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries });
+    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries, priority: opts.priority });
   }
 
   /* Date-range game counts — used only to point at the most recent date that
@@ -197,6 +401,7 @@
       ttl: opts.ttl === undefined ? 0 : opts.ttl,
       signal: opts.signal,
       retries: 0,
+      priority: 'high',
     });
   }
 
@@ -408,6 +613,8 @@
     peopleStats: peopleStats,
     vsPlayer: vsPlayer,
     quietRemainingMs: quietRemainingMs,
+    perf: perf,
+    tosBudget: tosBudget,
     state: state,
     toISODate: toISODate,
     todayISO: todayISO,

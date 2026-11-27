@@ -3,7 +3,7 @@
  *
  * Dark, Gameday-style theme for the scoreboard, game and Replay Feed pages.
  * Plain CSS, no build step, no framework. Every selector used by
- * index.html / game.html / reviews.html / flagged.html lives here.
+ * index.html / game.html / reviews.html / scoring.html / flagged.html lives here.
  * ==========================================================================*/
 
 :root {
@@ -1017,6 +1017,200 @@ table.driver-table td.src-cell a:hover { color: var(--accent); }
   text-align: center;
   font-size: 13px;
   color: var(--muted);
+}
+
+/* --------------------------------------------------- live state board (all games) */
+.live-state-wrap:empty { display: none; }
+.live-board {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.live-board-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+.live-board-note { color: var(--dim); letter-spacing: 0; text-transform: none; font-size: 11.5px; }
+.live-board-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 8px;
+}
+.live-card {
+  display: grid;
+  gap: 3px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: #101722;
+  padding: 9px 10px;
+  color: var(--text);
+  font-size: 12px;
+}
+.live-card:hover { text-decoration: none; border-color: var(--accent); }
+.live-card.is-live { border-color: rgba(245, 159, 0, .55); box-shadow: inset 3px 0 0 var(--amber); }
+.live-card.is-final { opacity: .78; }
+.live-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12.5px;
+}
+.live-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #ffd8a8;
+  border: 1px solid #854d0e;
+  border-radius: 999px;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+.live-score {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.live-inning { font-size: 11.5px; font-weight: 500; color: var(--muted); font-family: var(--font); }
+.live-meta { color: var(--muted); font-size: 11.5px; }
+.live-play {
+  color: #cbd5e1;
+  font-size: 11.5px;
+  border-left: 2px solid var(--line);
+  padding-left: 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.live-stamp { color: var(--dim); font-size: 10.5px; font-family: var(--mono); }
+
+/* official wording before/after on a feed row */
+.official-wording {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  font-size: 12px;
+  border-top: 1px dashed var(--line-soft);
+  padding-top: 7px;
+  margin: 0;
+}
+.official-wording dt { color: var(--dim); white-space: nowrap; }
+.official-wording dd { margin: 0; color: #cbd5e1; }
+
+.feed-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); min-height: 0; }
+.feed-note:empty { display: none; }
+.btn.is-flash { border-color: var(--green); color: var(--green-soft); }
+
+/* --------------------------------------------------------- scoring log page */
+.page-scoring .reviews-main { max-width: 1100px; }
+.score-intro h1 { margin: 0 0 8px; font-size: 19px; }
+.score-intro p { margin: 0 0 8px; font-size: 13.5px; color: #cbd5e1; }
+.score-intro-note { color: var(--muted) !important; font-size: 12.5px !important; }
+.score-section {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, var(--panel), var(--bg-2));
+  padding: 12px;
+  margin-bottom: 14px;
+}
+.score-section h2 {
+  margin: 0 0 4px;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.score-section-count {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: #c7d9ff;
+  border: 1px solid #1e3a8a;
+  background: rgba(59, 130, 246, .16);
+  border-radius: 999px;
+  padding: 0 7px;
+}
+.score-section-note { margin: 0 0 10px; font-size: 12px; color: var(--dim); }
+.score-list { display: grid; gap: 10px; }
+.score-row {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: #101722;
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+.score-row.is-open { border-color: rgba(245, 159, 0, .5); box-shadow: inset 3px 0 0 var(--amber); }
+.score-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.score-chip {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  border-radius: 999px;
+  padding: 0 7px;
+  border: 1px solid var(--line);
+}
+.score-chip.is-open { border-color: #854d0e; background: rgba(245, 159, 0, .16); color: #ffe066; }
+.score-chip.is-resolved { border-color: #14532d; background: rgba(47, 158, 68, .16); color: #b2f2bb; }
+.score-chip.is-changed { border-color: #1e3a8a; background: rgba(59, 130, 246, .16); color: #c7d9ff; }
+.score-when { font-family: var(--mono); color: var(--dim); }
+.score-io {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.score-side {
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-sm);
+  background: #0d141d;
+  padding: 8px;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+.score-side-head {
+  font-size: 10.5px;
+  letter-spacing: .8px;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.score-official-desc { font-size: 12.5px; color: #e8eef6; }
+.score-official-desc.is-muted { color: var(--muted); font-style: italic; }
+.score-official-fields { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+.score-state-row { display: grid; gap: 1px; border-top: 1px dashed var(--line-soft); padding-top: 4px; }
+.score-state-label { font-size: 10px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); }
+.score-state-text { font-size: 11.5px; color: var(--muted); }
+.score-attrib { font-size: 11px; color: var(--dim); }
+.stat-tile.is-open, .stat-tile.is-resolved { border-color: var(--line); }
+
+@media (max-width: 780px) {
+  .score-io { grid-template-columns: 1fr; }
+  .live-board-grid { grid-template-columns: 1fr; }
+  .official-wording { grid-template-columns: 1fr; }
 }
 
 /* -------------------------------------------------------------- status line */

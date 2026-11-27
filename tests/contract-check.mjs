@@ -56,7 +56,7 @@ for (const page of pages) {
     const idx = (name) => scripts.findIndex((s) => s.endsWith(name));
     if (idx('api.js') > 0) problems.push(`${page}: assets/js/api.js must be the first script`);
     const last = scripts[scripts.length - 1];
-    if (scripts.length > 1 && !/(scoreboard|game|reviews-feed)\.js$/.test(last)) {
+    if (scripts.length > 1 && !/(scoreboard|game|reviews-feed|scoring)\.js$/.test(last)) {
       problems.push(`${page}: the page-logic script should load last (found ${last})`);
     }
   }

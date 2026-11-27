@@ -17,6 +17,7 @@
     </div>
     <a class="btn btn-ghost" href="index.html">← Scoreboard</a>
     <a class="btn btn-feed" href="reviews.html">🚨 Replay Feed</a>
+    <a class="btn btn-ghost" href="scoring.html">✏️ Scoring Log</a>
   </header>
 
   <main class="flagged-main">
@@ -34,7 +35,9 @@
         re-verification of every API contract against the official MLB StatsAPI (A4-1…A4-10),
         with the full report in <a href="docs/verification-report-alert4.md">docs/verification-report-alert4.md</a>;
         <a href="#section-17">section 17</a> is session <code>9572372b</code>'s integration &amp;
-        provenance record (C-1…C-5).
+        provenance record (C-1…C-5); <a href="#section-18">section 18</a> is session
+        <code>arena/be65a669-alert4</code>'s latency / alert-sound / live-state / scoring-log work
+        (N-1…N-5), including one deliberate policy change and the items still unverified.
       </p>
       <p>
         This page lists every claim made about this rebuild together with the
@@ -1242,6 +1245,71 @@ node server.mjs                  # optional persistence backend (feed log + SSE)
       <code>fd8d4cdb</code>'s CI guard, <code>arena-f17e9b8e</code>'s verification reports and <code>arena/d8da4b48</code>'s link/identity adaptations, so sections 1–14 above are unchanged and still describe the code that is live. The
       <code>076871a5</code> Pages-deploy verification line was left as "to be recorded" by that session; this page's C-4 applies to it equally.
     </p>
+    <h2 id="section-18">18. Latency, alert sound, second-precision state &amp; the isolated scoring log (session <code>arena/be65a669-alert4</code>, 2026-11-27)</h2>
+    <p>
+      Owner brief: monitor every live game, receive the fastest feed the StatsAPI allows, alert on every
+      challenge / review / umpire review / official-scoring-pending / scoring change, make the alert sound
+      pleasant for all-day listening, capture the official game state to the second with the exact official
+      wording before and after, and keep pending rulings + scoring changes in a separate persistent section
+      that cannot disrupt the alerts. Design and request budget:
+      <a href="docs/live-state-and-scoring-log.md">docs/live-state-and-scoring-log.md</a> ·
+      <a href="docs/api-compliance.md">docs/api-compliance.md</a>.
+    </p>
+    <table class="verify">
+      <thead>
+        <tr><th>#</th><th>Item</th><th>What the sources say</th><th>What the site does</th><th>Source</th><th>Status</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>N-1</td>
+          <td class="wrap">Fastest honest feed for play-by-play and for a challenge/review being <em>called</em>.</td>
+          <td class="wrap">The StatsAPI is pull-only and publishes no latency figure and no rate limit. MLB flips <code>status.statusCode</code> when a review is called, before the play text exists.</td>
+          <td class="wrap">Replay Feed keeps the whole-slate official status sweep at <strong>125&nbsp;ms while any game is live</strong> (relaxes to 1&nbsp;s otherwise, pauses in a hidden tab, waits out a 429 quiet period) and fires an out-of-band play-by-play fetch on the flip; play-by-play scans stay at 250&nbsp;ms. Every request is timed and the status line shows the sweep round-trip plus API p50/p95.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/schedule?fields=dates,games,gamePk,status,statusCode,detailedState" target="_blank" rel="noopener">statsapi.mlb.com schedule (fields projection)</a> · <a href="https://www.mlb.com/official-information/terms-of-use" target="_blank" rel="noopener">MLB.com Terms of Use</a></td>
+          <td class="status-ok">Implemented · latency measured, not asserted</td>
+        </tr>
+        <tr>
+          <td>N-2</td>
+          <td class="wrap">~3&nbsp;s raindrop alert sound, plus an on/off toggle and a way to test it.</td>
+          <td class="wrap">No official reference: the sound is our own synthesis (Web Audio). “Pleasant” is a subjective property and was not measured.</td>
+          <td class="wrap">A 3&nbsp;s raindrop (rain bed + 13 panned droplets + two low plops + short echo, peak level 0.16, seeded so it is identical every time) with a 1.2&nbsp;s cooldown. The persisted toggle is unchanged; a new <strong>🔔 Test Sound</strong> button plays the chime even while muted and reports when a browser has no Web Audio.</td>
+          <td class="wrap">README §“Replay Feed” · <code>assets/js/reviews-feed.js</code> <code>playRaindrop()</code></td>
+          <td class="status-flag">Structure/level/cooldown verified · pleasantness not measured</td>
+        </tr>
+        <tr>
+          <td>N-3</td>
+          <td class="wrap"><strong>Policy change:</strong> ABS pitch challenges now play the alert sound.</td>
+          <td class="wrap">The earlier uploaded button title said the chime was “not ABS” (routine ABS rows stayed silent). Owner instruction 2026-11-27: “It should make an alert sound for all events that we want to be alerted to and that shows up in the alert feed.”</td>
+          <td class="wrap">Every feed event chimes once — challenges, umpire/crew-chief reviews, boundary calls, ABS challenges, pending rulings and scoring changes — throttled by the 1.2&nbsp;s cooldown so a busy ABS game cannot become a drone. The previous smoke check that asserted silence for ABS was revised, not deleted.</td>
+          <td class="wrap">Owner instruction 2026-11-27 · <code>tools/smoke-test.mjs</code> §13 “G-3 (revised 2026-11-27)”</td>
+          <td class="status-ok">Deliberate, documented change</td>
+        </tr>
+        <tr>
+          <td>N-4</td>
+          <td class="wrap">State captured “to the second” for every game, with the exact official wording before and after a ruling.</td>
+          <td class="wrap">The payload carries no event timestamp, so the observation time (when this page received the payload) is the only honest stamp. Official wording is <code>result.description</code> / <code>status.detailedState</code>.</td>
+          <td class="wrap">Every poll becomes a snapshot with <code>at</code>, a millisecond ISO string and an <code>HH:MM:SS</code> clock, plus score, inning, outs, count, pitch count (total and per pitcher), pitcher, batter, at-bat, last play and review code. Journalled (60/game), persisted per date and merged by observation time. Rows store <code>official.before</code>/<code>.after</code> verbatim; a row first seen after the ruling is labelled “late observation” rather than back-filled.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/game/824474/playByPlay" target="_blank" rel="noopener">play-by-play shape (captured 2026-11-20)</a> · <code>assets/js/live-state.js</code></td>
+          <td class="status-ok">Implemented · snapshot tests LS-1…LS-3</td>
+        </tr>
+        <tr>
+          <td>N-5</td>
+          <td class="wrap">Pending rulings and scoring changes in a separate section that survives a refresh and cannot disrupt the alerts.</td>
+          <td class="wrap">The payload has no scoring-change marker; changes are only knowable by diffing consecutive observations, and pending rulings only from the API’s own <code>os_ruling_pending_*</code> event types.</td>
+          <td class="wrap">A separate store (<code>mlbp.scoringlog.&lt;date&gt;</code> + <code>/api/scoring-log</code> → <code>data/scoring-log-&lt;date&gt;.json</code>) and a separate page (<a href="scoring.html">scoring.html</a>) with two sections, before/after wording, the live state at each observation, second-precision timestamps and JSON export. Written only after every alert for that poll has fired, in its own try/catch, with no audio and no feed-row writes; <code>scoring.html</code> also runs its own 2&nbsp;s capture loop so the log fills with the Replay Feed closed.</td>
+          <td class="wrap"><a href="https://statsapi.mlb.com/api/v1/eventTypes" target="_blank" rel="noopener">eventTypes registry</a> · <a href="https://www.mlb.com/official-information/scoring-changes" target="_blank" rel="noopener">mlb.com scoring changes</a></td>
+          <td class="status-ok">Implemented · snapshot tests SL-1…SL-4</td>
+        </tr>
+        <tr>
+          <td>N-6</td>
+          <td class="wrap">Live re-verification of the new code against <code>statsapi.mlb.com</code>.</td>
+          <td class="wrap">This sandbox's egress allowlist does not include <code>statsapi.mlb.com</code>.</td>
+          <td class="wrap">Not performed and not claimed. All fixtures remain the 2026-11-20 official captures; the new behaviour is verified network-free (<code>npm test</code> 75/75, <code>tests/run-all.mjs</code>, <code>tools/restoration-check.mjs</code>).</td>
+          <td class="wrap">Session <code>arena/be65a669-alert4</code> sandbox egress policy</td>
+          <td class="status-unverified">Unverified — same limitation as U-10/C-4</td>
+        </tr>
+      </tbody>
+    </table>
   </main>
 
   <footer class="site-footer">

@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MLB Live PBP — Official Scoring Log</title>
+  <meta name="description" content="Persistent log of official-scoring pending rulings and scoring changes for every MLB game, captured live from the StatsAPI with second-precision timestamps and the exact official wording before and after.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23fff' stroke='%23e03131' stroke-width='6'/%3E%3Cpath d='M50 4 A46 46 0 0 1 96 50 M50 96 A46 46 0 0 1 4 50 M4 50 A46 46 0 0 1 50 4 M96 50 A46 46 0 0 1 50 96' stroke='%23e03131' stroke-width='2.5' fill='none'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://statsapi.mlb.com" crossorigin>
+  <link rel="dns-prefetch" href="https://statsapi.mlb.com">
+  <link rel="stylesheet" href="assets/css/style.css">
+</head>
+<body class="page-reviews page-scoring">
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-ball">⚾</span>
+      <span>MLB Live PBP</span>
+      <span class="brand-sub">official scoring log · pending + changes</span>
+    </div>
+    <a class="btn btn-ghost" href="index.html">← Scoreboard</a>
+    <a class="btn btn-ghost" href="reviews.html">Replay Feed</a>
+    <div class="date-nav">
+      <button class="btn btn-ghost" onclick="ScoringPage.prevDay()" title="Previous day">←</button>
+      <input type="date" id="date-picker" aria-label="Game date">
+      <button class="btn btn-ghost" onclick="ScoringPage.nextDay()" title="Next day">→</button>
+      <button class="btn" onclick="ScoringPage.today()">Today</button>
+    </div>
+    <div id="date-label" class="date-label"></div>
+    <div class="feed-controls">
+      <button id="refresh-btn" class="btn">Refresh</button>
+      <button id="export-btn" class="btn btn-ghost" title="Download this date's scoring log as JSON">⬇ Export JSON</button>
+      <span class="countdown" id="last-capture" title="Last capture from the MLB StatsAPI"></span>
+      <div class="live-pill" title="Capturing the official scoring state">
+        <span class="live-dot"></span><span>LOGGING</span>
+      </div>
+    </div>
+  </header>
+
+  <main class="reviews-main">
+    <section class="panel score-intro">
+      <h1>Official scoring log</h1>
+      <p>
+        This page is a <strong>separate store</strong> from the Replay Feed's alerts. It records the two
+        official-scoring signals — at-bats the official scorer has <strong>not ruled on yet</strong>
+        (<code>os_ruling_pending_primary</code> / <code>os_ruling_pending_prior</code>, official wording
+        “Official Scorer Ruling Pending”) and <strong>scoring changes</strong> where the official scorer
+        reclassified a play after the fact (hit ↔ error, out ↔ hit, single ↔ double, …). Each record keeps
+        the exact official wording <em>before</em> and <em>after</em>, the live game state at each
+        observation (score, outs, count, pitch count, pitcher, batter) and a timestamp to the second.
+      </p>
+      <p class="score-intro-note">
+        It persists across refreshes in this browser (<code>localStorage</code>, one log per date) and, when
+        the Node server is running, in <code>data/scoring-log-&lt;date&gt;.json</code> via
+        <code>/api/scoring-log</code>. Nothing on this page plays a sound, and a write here can never delay
+        or interrupt an alert. Storage: <span id="store-note">checking…</span>
+      </p>
+    </section>
+
+    <section id="score-stats" class="reviews-summary-bar"></section>
+
+    <section class="score-section">
+      <h2>Pending rulings <span class="score-section-count" id="pending-count">0</span></h2>
+      <p class="score-section-note">
+        At-bats the official scorer has not scored yet. The row fills in its “after” wording the second
+        MLB publishes the ruling.
+      </p>
+      <div id="pending-list" class="score-list"></div>
+    </section>
+
+    <section class="score-section">
+      <h2>Scoring changes <span class="score-section-count" id="change-count">0</span></h2>
+      <p class="score-section-note">
+        Plays whose official classification changed after the fact, with the initial call and the final
+        ruling as the API published them.
+      </p>
+      <div id="changes-list" class="score-list"></div>
+    </section>
+
+    <div id="status-line" class="status-line"></div>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      Unofficial fan project. Data via the public MLB StatsAPI
+      (<a href="https://statsapi.mlb.com" target="_blank" rel="noopener">statsapi.mlb.com</a>) —
+      pending rulings come from the API's own event-type registry, and scoring changes are detected by
+      snapshotting every completed play's official classification (<code>result.eventType</code> /
+      <code>result.isOut</code> / <code>count.outs</code> / error movements in <code>runners[]</code>) on
+      every capture and diffing it against the previous one. A change can only be logged when its initial
+      call was observed before the change landed; finals are re-read for 30 minutes after they end.
+      This capture loop is independent of the Replay Feed's alert loop: it has its own cadence, its own
+      store and its own error handling, so it cannot delay, reset or silence an alert.
+      See <a href="https://www.mlb.com/official-information/scoring-changes" target="_blank" rel="noopener">mlb.com/official-information/scoring-changes</a>
+      for MLB's own explanation, and <a href="flagged.html">⚑ Flagged for Review</a> for the verification log.
+      Not affiliated with MLB or MLB Advanced Media.
+    </p>
+  </footer>
+
+  <script src="assets/js/api.js"></script>
+  <script src="assets/js/ui.js"></script>
+  <script src="assets/js/reviews.js"></script>
+  <script src="assets/js/live-state.js"></script>
+  <script src="assets/js/scoring-log.js"></script>
+  <script src="assets/js/scoring.js"></script>
+</body>
+</html>

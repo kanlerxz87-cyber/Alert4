@@ -311,7 +311,8 @@ function routeFetch(url) {
   else if (/\/game\/824466\/feed\/live/.test(u)) body = FEED_823109;
   else if (/\/people\/660271\/stats/.test(u)) body = u.includes('opposingPlayerId') ? H2H_STATS : HITTER_STATS;
   else if (/\/people\/592789\/stats/.test(u)) body = PITCHER_STATS;
-  else if (u.includes('/api/feed-log')) body = { v: 1, date: '2026-09-15', entries: [], order: [], snapshots: {}, irregularities: {}, grace: {}, settled: [] };
+  else if (u.includes('/api/feed-log')) body = { v: 1, date: '2026-09-15', entries: [], order: [], snapshots: {}, irregularities: {}, grace: {}, settled: [], live: {} };
+  else if (u.includes('/api/scoring-log')) body = { v: 1, date: '2026-09-15', savedAt: Date.now(), records: [] };
 
   if (body === null) {
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
@@ -1138,12 +1139,13 @@ console.log('\n[13] reference-parity fixes (session 6e2a58d9: G-2…G-5, G-9)');
     await rescanAnd((at) => assert(at > 0, 'new pending ruling did not chime'));
   });
 
-  await check('G-3: routine ABS pitch challenges never chime (uploaded button title)', async () => {
+  await check('G-3 (revised 2026-11-27): ABS pitch challenges chime too — every feed event alerts', async () => {
     const keep = st.entries.filter((e) => !(e.review && e.review.isABS));
     assert(keep.length < st.entries.length, 'expected an ABS row in fixtures');
     st.entries = keep;
     await rescanAnd((at) => {
-      assert(at === 0, 'routine ABS row must not chime, got lastChimeAt=' + at);
+      assert(at > 0, 'ABS row is a feed event, so it must chime; got lastChimeAt=' + at);
+      assert(st.lastChimeReason === 'abs', 'ABS rows should report the abs chime reason, got ' + st.lastChimeReason);
       assert(st.entries.some((e) => e.review && e.review.isABS), 'ABS row should still be tracked');
     });
   });
@@ -1227,6 +1229,161 @@ console.log('\n[13] reference-parity fixes (session 6e2a58d9: G-2…G-5, G-9)');
   });
 
   dom.window.close();
+}
+
+console.log('\n[14] second-precision live state · alert sound · isolated scoring log (2026-11-27)');
+{
+  const dom = await boot('reviews.html', { beforeParse(w) { w.localStorage.clear(); } });
+  await new Promise((r) => setTimeout(r, 900));
+  const w = dom.window;
+  const doc = w.document;
+  const st = w.ReplayFeed.state;
+
+  await check('LA-1: polling constants are the documented fastest cadence', () => {
+    assert(w.ReplayFeed.SWEEP_LIVE_MS === 125, 'live status sweep must be 125ms, got ' + w.ReplayFeed.SWEEP_LIVE_MS);
+    assert(w.ReplayFeed.SCAN_MS === 250, 'play-by-play scan must be 250ms, got ' + w.ReplayFeed.SCAN_MS);
+    assert(w.ReplayFeed.SWEEP_IDLE_MS === 1000, 'idle sweep must relax to 1s, got ' + w.ReplayFeed.SWEEP_IDLE_MS);
+    assert(w.ReplayFeed.FETCH_CONCURRENCY <= 6, 'parallel game fetches must stay capped: ' + w.ReplayFeed.FETCH_CONCURRENCY);
+  });
+
+  await check('LA-2: every StatsAPI request is timed (p50/p95/sweep), not claimed', () => {
+    const lat = w.MLB.latencyStats();
+    assert(lat && lat.count > 0, 'no latency samples recorded');
+    assert(typeof lat.p50 === 'number' && lat.p50 >= 0, 'p50 missing');
+    assert(typeof lat.p95 === 'number' && lat.p95 >= 0, 'p95 missing');
+    assert(typeof w.ReplayFeed.latency().sweepMs === 'number', 'sweep round-trip not measured');
+    const status = text(doc.getElementById('status-line'));
+    assert(/status sweep \d+ms/.test(status), 'status line does not show the measured sweep: ' + status);
+    assert(/125ms sweep/.test(status), 'status line does not name the live cadence: ' + status);
+  });
+
+  await check('LS-1: every poll is a second-precision state snapshot for the live game', () => {
+    const entry = st.live[823109];
+    assert(!!entry && !!entry.latest, 'no live-state snapshot for the live game');
+    const snap = entry.latest;
+    assert(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(snap.atIso),
+      'snapshot must carry a millisecond ISO timestamp, got ' + snap.atIso);
+    assert(/^\d{2}:\d{2}:\d{2}$/.test(snap.atClock), 'clock must be second precision, got ' + snap.atClock);
+    assert(typeof snap.score.away === 'number' && typeof snap.score.home === 'number', 'score not captured');
+    assert(typeof snap.outs === 'number', 'outs not captured');
+    assert(typeof snap.balls === 'number' && typeof snap.strikes === 'number', 'count not captured');
+    assert(snap.pitcher && snap.pitcher.name, 'pitcher not captured');
+    assert(snap.batter && snap.batter.name, 'batter not captured');
+    assert(snap.pitchCount && snap.pitchCount.total >= 0, 'pitch count not captured');
+    assert(Array.isArray(entry.history) && entry.history.length >= 1, 'no journalled history');
+  });
+
+  await check('LS-2: the board shows every game on the slate with its captured state', () => {
+    const html = text(doc.getElementById('live-state-board'));
+    assert(/Live game state/.test(html), 'board header missing');
+    assert(/3 on the slate/.test(html), 'board does not list the whole slate: ' + html.slice(0, 200));
+    assert(/captured \d{2}:\d{2}:\d{2}/.test(html), 'no second-precision capture stamp on the board');
+    assert(/P Test Pitcher/.test(html), 'board is missing the captured pitcher');
+    assert(/AB Test Batter/.test(html), 'board is missing the captured batter');
+  });
+
+  await check('LS-3: rows carry the exact official wording before and after', () => {
+    const review = st.entries.find((e) => e.kind === 'review' && e.review && e.review.code === 'MA');
+    assert(review && review.official && review.official.before, 'no official before-wording on the review row');
+    assert(review.official.before.description.length > 10, 'before wording is empty');
+    assert(!!review.official.before.atClock, 'before wording has no second-precision time');
+    const html = text(doc.getElementById('feed-list'));
+    assert(/Official wording — before/.test(html), 'before/after wording block missing from the feed');
+    assert(/Official wording — after/.test(html), 'after wording block missing from the feed');
+  });
+
+  await check('AS-1: the alert sound is a ~3s raindrop with a real cooldown', () => {
+    assert(w.ReplayFeed.SOUND_DURATION_MS === 3000, 'sound must be ~3s, got ' + w.ReplayFeed.SOUND_DURATION_MS);
+    assert(w.ReplayFeed.SOUND_COOLDOWN_MS > 0 && w.ReplayFeed.SOUND_COOLDOWN_MS < w.ReplayFeed.SOUND_DURATION_MS,
+      'cooldown must be shorter than the sound but long enough to stop stacking');
+  });
+
+  await check('AS-2: the Test Sound button plays even while the toggle is off', () => {
+    st.soundOn = false;
+    st.lastChimeAt = 0;
+    w.ReplayFeed.testSound();
+    assert(st.lastChimeAt > 0, 'test sound did not fire with the toggle off');
+    assert(st.lastChimeReason === 'test', 'test sound must be labelled, got ' + st.lastChimeReason);
+    st.lastChimeAt = 0;
+    st.soundOn = false;
+    assert(w.ReplayFeed.state.soundOn === false, 'test sound must not change the toggle');
+  });
+
+  await check('SL-1: pending rulings and scoring changes are written to a SEPARATE store', () => {
+    const date = st.date;
+    const raw = w.localStorage.getItem('mlbp.scoringlog.' + date);
+    assert(!!raw, 'no scoring log written for ' + date);
+    const payload = JSON.parse(raw);
+    assert(Array.isArray(payload.records) && payload.records.length > 0, 'scoring log has no records');
+    const pending = payload.records.find((r) => r.kind === 'pending');
+    assert(!!pending, 'no pending record in the scoring log');
+    assert(pending.wordingBefore && pending.wordingBefore.length > 5, 'pending record has no official wording');
+    assert(/^\d{2}:\d{2}:\d{2}$/.test(pending.atClock || ''), 'pending record has no second-precision time');
+    assert(pending.stateBefore && typeof pending.stateBefore.outs === 'number',
+      'pending record did not capture the live state');
+    const feedRaw = w.localStorage.getItem('mlbp.feedlog.' + date);
+    const feed = JSON.parse(feedRaw);
+    assert(Array.isArray(feed.entries), 'feed log missing');
+    assert(!feed.entries.some((e) => e.kind === 'pending' && !e.review),
+      'scoring records leaked into the alert feed store');
+  });
+
+  await check('SL-2: a scoring-log write cannot chime or touch the alert feed', () => {
+    const before = st.entries.length;
+    const chimeBefore = st.lastChimeAt;
+    w.ScoringLog.record(st.date, [{
+      id: '999999:1:scoring-change', kind: 'change', status: 'changed', gamePk: 823109,
+      matchupLabel: 'SEA @ MIN', inningLabel: 'Top 1', at: 1234, atClock: '00:00:01',
+      wordingBefore: 'Initial call text', wordingAfter: 'Final ruling text',
+    }]);
+    assert(st.entries.length === before, 'scoring-log write changed the alert feed rows');
+    assert(st.lastChimeAt === chimeBefore, 'scoring-log write played/mutated the alert sound');
+  });
+
+  const scoringDate = st.date;
+  const storedScoring = w.localStorage.getItem('mlbp.scoringlog.' + scoringDate);
+  const storedFeed = w.localStorage.getItem('mlbp.feedlog.' + scoringDate);
+
+  /* The refresh path: the page's own loaders, reading what was persisted. */
+  await check('SL-3: a refresh restores the scoring log and the live-state journal', async () => {
+    const payload = await w.ScoringLog.load(scoringDate);
+    assert(payload && payload.records.length > 0, 'scoring log did not survive reload');
+    assert(payload.records.some((r) => r.id === '999999:1:scoring-change'), 'manually written record lost on reload');
+    assert(payload.records.some((r) => r.kind === 'pending' && r.wordingBefore),
+      'captured pending record lost its official wording on reload');
+    const feed = await w.FeedLog.load(scoringDate);
+    const live = feed.live && feed.live[823109];
+    assert(live && live.latest, 'live-state journal is not in the persisted feed log');
+    assert(live.latest.atIso, 'persisted snapshot lost its timestamp');
+    assert(Array.isArray(live.history) && live.history.length >= 1, 'persisted journal lost its history');
+  });
+
+  dom.window.close();
+
+  const scoring = await boot('scoring.html', {
+    query: '?date=' + scoringDate,
+    beforeParse(w2) {
+      if (storedScoring) w2.localStorage.setItem('mlbp.scoringlog.' + scoringDate, storedScoring);
+      if (storedFeed) w2.localStorage.setItem('mlbp.feedlog.' + scoringDate, storedFeed);
+    },
+  });
+  await new Promise((r) => setTimeout(r, 700));
+  await check('SL-4: scoring.html renders pending and changes in two separate sections', () => {
+    const sedoc = scoring.window.document;
+    assert(!!scoring.window.ScoringPage, 'scoring.html did not initialise');
+    assert(!scoring.window.ReplayFeed, 'the scoring page must not load the alert feed');
+    const pending = text(sedoc.getElementById('pending-list'));
+    assert(/Official wording — before/.test(pending), 'pending section lost its before wording: ' + pending.slice(0, 200));
+    const changes = text(sedoc.getElementById('changes-list'));
+    assert(changes.length > 0, 'changes section is empty');
+    assert(/Official wording — before/.test(changes) || /No official scoring changes/.test(changes),
+      'changes section rendered nothing useful');
+    assert(/State then/.test(pending), 'the live state at capture time is missing from a record');
+    const store = text(sedoc.getElementById('store-note'));
+    assert(store.length > 0, 'storage note missing');
+    assert(/MLB StatsAPI/.test(pending + ' ' + changes), 'records lost their official source note');
+  });
+  scoring.window.close();
 }
 
 function __setDate(dom) {

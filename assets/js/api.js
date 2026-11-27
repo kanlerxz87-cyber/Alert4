@@ -5,10 +5,25 @@
  *   1. fetch wrapper with timeout, retry, response cache and HTTP-429 handling
  *   2. endpoint helpers (schedule, feed/live, playByPlay, gameStatus, people stats)
  *   3. small date/number formatters shared by the pages
+ *   4. latency instrumentation + TOS request budget (see docs/api-compliance.md)
  *
  * The StatsAPI is keyless and sends CORS headers, so a static GitHub Pages site
  * can call it straight from the browser.  Endpoint list + `fields` projections
  * follow the ones documented in README.md §"How it works".
+ *
+ * Latency design (fastest feed within TOS):
+ *   - The 125 ms lean status sweep (schedule `fields` projection, ~2.4 KB) is
+ *     the fastest signal: MLB flips `status.statusCode` the instant a review
+ *     is called, before any play text exists.  It triggers an out-of-band
+ *     play-by-play fetch so a review never waits for the 250 ms scan.
+ *   - Every request is timed (performance.now) and exposed via
+ *     `MLB.latencyStats()` for the HUD; no request is ever blocked by the
+ *     instrumentation itself.
+ *   - TOS budget: FETCH_CONCURRENCY (reviews-feed) caps parallel game fetches,
+ *     all polls pause while the tab is hidden, preview/final games back off,
+ *     post-Final re-scans are bounded to a 30-minute grace, and HTTP 429
+ *     triggers a quiet period honouring Retry-After (1 s–5 min, default 60 s).
+ *     See docs/api-compliance.md for the full budget table.
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -31,6 +46,59 @@
     requests: 0,
     cacheHits: 0,
   };
+
+  /* ---- latency instrumentation -------------------------------------------------
+   * Every completed request records { ms, at, status, tag }.  The Replay Feed HUD
+   * and the smoke tests read these numbers, so "fastest feed" is measured rather
+   * than asserted.  Timeouts come from performance.now() when available (jsdom
+   * and older browsers fall back to Date.now()). */
+  var PERF = (global.performance && typeof global.performance.now === 'function')
+    ? function () { return global.performance.now(); }
+    : function () { return Date.now(); };
+
+  var LAT_MAX = 200;
+  var latency = {
+    samples: [],          // newest last: { ms, at, status, tag }
+    last: null,           // most recent sample
+    slowest: 0,
+  };
+
+  function recordLatency(ms, status, tag) {
+    var sample = { ms: Math.round(ms), at: Date.now(), status: status || 0, tag: tag || 'api' };
+    latency.samples.push(sample);
+    if (latency.samples.length > LAT_MAX) latency.samples.shift();
+    latency.last = sample;
+    if (sample.ms > latency.slowest) latency.slowest = sample.ms;
+    return sample;
+  }
+
+  /** Nearest-rank percentile over the rolling sample window. */
+  function percentile(values, p) {
+    if (!values.length) return 0;
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+    return sorted[idx];
+  }
+
+  /**
+   * latencyStats() — rolling request timing, for the latency HUD and for tests.
+   *   count, p50, p95, last, slowest  (milliseconds, end-to-end incl. network)
+   *   lastAt, quietRemainingMs, requests, cacheHits
+   */
+  function latencyStats() {
+    var ms = latency.samples.map(function (s) { return s.ms; });
+    return {
+      count: ms.length,
+      p50: percentile(ms, 50),
+      p95: percentile(ms, 95),
+      last: latency.last ? latency.last.ms : 0,
+      lastAt: latency.last ? latency.last.at : 0,
+      slowest: latency.slowest,
+      quietRemainingMs: quietRemainingMs(),
+      requests: state.requests,
+      cacheHits: state.cacheHits,
+    };
+  }
 
   var cache = Object.create(null);
   var CACHE_MAX_ENTRIES = 240;
@@ -96,6 +164,8 @@
     function once() {
       attempt += 1;
       state.requests += 1;
+      var startedAt = PERF();
+      var tag = opts.tag || 'api';
 
       var controller = new AbortController();
       var timer = setTimeout(function () { controller.abort(); }, REQUEST_TIMEOUT_MS);
@@ -127,6 +197,7 @@
         return res.json();
       }).then(function (data) {
         clearTimeout(timer);
+        recordLatency(PERF() - startedAt, 200, tag);
         state.lastOK = now();
         state.lastError = null;
         if (ttl) {
@@ -136,6 +207,7 @@
         return data;
       }).catch(function (err) {
         clearTimeout(timer);
+        recordLatency(PERF() - startedAt, (err && err.status) || 0, tag);
         state.lastError = err;
 
         var status = err && err.status;
@@ -173,7 +245,7 @@
     return getJSON(scheduleUrl(date, {
       hydrate: opts.hydrate === undefined ? SCHEDULE_HYDRATE : opts.hydrate,
       fields: opts.fields || '',
-    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries });
+    }), { ttl: opts.ttl || 0, signal: opts.signal, retries: opts.retries, tag: opts.tag || 'schedule' });
   }
 
   /* Date-range game counts — used only to point at the most recent date that
@@ -197,6 +269,7 @@
       ttl: opts.ttl === undefined ? 0 : opts.ttl,
       signal: opts.signal,
       retries: 0,
+      tag: opts.tag || 'status-sweep',
     });
   }
 
@@ -205,7 +278,7 @@
     opts = opts || {};
     var url = API_ROOT + '/v1.1/game/' + gamePk + '/feed/live';
     if (opts.fields) url += '?fields=' + encodeURIComponent(opts.fields);
-    return getJSON(url, { signal: opts.signal, retries: opts.retries })
+    return getJSON(url, { signal: opts.signal, retries: opts.retries, tag: opts.tag || 'feed' })
       .catch(function (err) {
         if (err && err.status === 404) {
           var v1Url = API_ROOT + '/v1/game/' + gamePk + '/feed/live';
@@ -253,7 +326,7 @@
     opts = opts || {};
     var fields = 'gameData,status,abstractGameState,codedGameState,detailedState,statusCode,reason,startTimeTBD,abstractGameCode';
     return getJSON(API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(fields), {
-      signal: opts.signal, retries: 0,
+      signal: opts.signal, retries: 0, tag: 'game-status',
     });
   }
 
@@ -261,7 +334,7 @@
     opts = opts || {};
     var url = API_ROOT + '/v1/game/' + gamePk + '/playByPlay';
     if (opts.fields) url += '?fields=' + encodeURIComponent(opts.fields);
-    return getJSON(url, { signal: opts.signal, retries: opts.retries });
+    return getJSON(url, { signal: opts.signal, retries: opts.retries, tag: opts.tag || 'play-by-play' });
   }
 
   function boxscore(gamePk, opts) {
@@ -408,6 +481,7 @@
     peopleStats: peopleStats,
     vsPlayer: vsPlayer,
     quietRemainingMs: quietRemainingMs,
+    latencyStats: latencyStats,
     state: state,
     toISODate: toISODate,
     todayISO: todayISO,

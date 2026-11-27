@@ -202,7 +202,7 @@ function mergeFeedLogPayloads(existing, incoming, dateStr) {
  * established — e.g. the static GitHub Pages deployment, where this endpoint
  * does not exist).
  */
-const sseClients = new Set(); // { res, date }
+const sseClients = new Set(); // { res, date, channel }
 
 function sseWrite(res, chunk) {
   try {
@@ -212,23 +212,134 @@ function sseWrite(res, chunk) {
   }
 }
 
-/** Push one merged log payload to every stream watching that date. */
-function broadcastFeedLog(dateStr, payload) {
+/**
+ * Push one merged log payload to every stream watching that date on one
+ * channel.  Two independent channels exist so the alert log and the official
+ * state log can never block or corrupt each other:
+ *   · 'feed-log'  — the alert/feed entries (reviews, scoring-change alerts)
+ *   · 'state-log' — the separate official live-state + scoring log
+ */
+function broadcast(channel, dateStr, payload) {
   if (!sseClients.size) return 0;
   let body;
   try {
     body = JSON.stringify(payload);
   } catch (err) {
-    console.warn(`[server] could not serialize the feed log for push:`, err);
+    console.warn(`[server] could not serialize the ${channel} payload for push:`, err);
     return 0;
   }
-  const frame = `event: feed-log\ndata: ${body}\n\n`;
+  const frame = `event: ${channel}\ndata: ${body}\n\n`;
   let sent = 0;
   sseClients.forEach((client) => {
-    if (client.date !== dateStr) return;
+    if (client.date !== dateStr || client.channel !== channel) return;
     if (sseWrite(client.res, frame)) sent += 1;
   });
   return sent;
+}
+
+function broadcastFeedLog(dateStr, payload) {
+  return broadcast('feed-log', dateStr, payload);
+}
+
+/* ------------------------------------------------------- state-log store
+ * The official live-state log and the official-scoring log are stored in
+ * their own files (data/state-log-<date>.json) with their own schema, so a
+ * write from the state pipeline can never touch — let alone corrupt — the
+ * alert feed's log (data/feed-log-<date>.json).  Same atomic-write and merge
+ * discipline as the feed log; merging is idempotent by row id.
+ */
+function getStateLogFilePath(dateStr) {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  return path.join(DATA_DIR, `state-log-${dateStr}.json`);
+}
+
+function readStateLogFromDisk(dateStr) {
+  const filePath = getStateLogFilePath(dateStr);
+  if (!filePath || !fs.existsSync(filePath)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+  } catch (err) {
+    console.warn(`[server] failed to read state log for ${dateStr}:`, err);
+    return null;
+  }
+}
+
+function emptyStateLog(dateStr) {
+  return {
+    v: 1,
+    date: dateStr,
+    savedAt: Date.now(),
+    events: [],
+    atBats: [],
+    snapshots: {},
+    scoring: [],
+    trimmed: 0,
+  };
+}
+
+function mergeStateLogPayloads(existing, incoming, dateStr) {
+  const base = existing && existing.v === 1 ? existing : emptyStateLog(dateStr);
+  const add = incoming && incoming.v === 1 ? incoming : emptyStateLog(dateStr);
+  const byId = new Map();
+  const order = [];
+  const take = (row) => {
+    if (!row || !row.id) return;
+    const id = String(row.id);
+    const prev = byId.get(id);
+    if (!prev) {
+      byId.set(id, row);
+      order.push(id);
+      return;
+    }
+    byId.set(id, { ...prev, ...row, observedAt: prev.observedAt || row.observedAt });
+  };
+  (Array.isArray(base.events) ? base.events : []).forEach(take);
+  (Array.isArray(add.events) ? add.events : []).forEach(take);
+  const events = order.map((id) => byId.get(id))
+    .sort((a, b) => (Number(a.observedMs) || 0) - (Number(b.observedMs) || 0));
+
+  const atBatMap = new Map();
+  [...(base.atBats || []), ...(add.atBats || [])].forEach((row) => {
+    if (!row || row.key === undefined) return;
+    atBatMap.set(String(row.key), { ...(atBatMap.get(String(row.key)) || {}), ...row });
+  });
+
+  const scoringMap = new Map();
+  (Array.isArray(base.scoring) ? base.scoring : []).forEach((row) => {
+    if (row && row.id) scoringMap.set(String(row.id), row);
+  });
+  (Array.isArray(add.scoring) ? add.scoring : []).forEach((row) => {
+    if (!row || !row.id) return;
+    const id = String(row.id);
+    scoringMap.set(id, { ...(scoringMap.get(id) || {}), ...row });
+  });
+
+  return {
+    v: 1,
+    date: dateStr,
+    savedAt: Date.now(),
+    events: events.slice(-4000),
+    atBats: [...atBatMap.values()].slice(-600),
+    snapshots: { ...(base.snapshots || {}), ...(add.snapshots || {}) },
+    scoring: [...scoringMap.values()].slice(-800),
+    trimmed: (Number(base.trimmed) || 0) + (Number(add.trimmed) || 0),
+  };
+}
+
+function writeStateLogToDisk(dateStr, payload) {
+  const filePath = getStateLogFilePath(dateStr);
+  if (!filePath) return false;
+  try {
+    const existing = readStateLogFromDisk(dateStr);
+    const merged = mergeStateLogPayloads(existing, payload, dateStr);
+    const tempPath = `${filePath}.tmp.${Date.now()}`;
+    fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2), 'utf8');
+    fs.renameSync(tempPath, filePath);
+    return merged;
+  } catch (err) {
+    console.error(`[server] failed to write state log for ${dateStr}:`, err);
+    return false;
+  }
 }
 
 function writeLogToDisk(dateStr, payload) {
@@ -282,8 +393,10 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/feed-log/stream?date=YYYY-MM-DD — Server-Sent Events tail of the log.
-  if (pathname === '/api/feed-log/stream' && req.method === 'GET') {
+  // GET /api/feed-log/stream or /api/state-log/stream — Server-Sent Events.
+  if ((pathname === '/api/feed-log/stream' || pathname === '/api/state-log/stream') &&
+      req.method === 'GET') {
+    const channel = pathname === '/api/state-log/stream' ? 'state-log' : 'feed-log';
     const dateStr = reqUrl.searchParams.get('date');
     if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
       sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
@@ -302,7 +415,7 @@ const server = http.createServer((req, res) => {
     // the date this stream is for (so a late/duplicate frame is ignorable).
     sseWrite(res, `retry: 3000\nevent: connected\ndata: {"date":"${dateStr}"}\n\n`);
     if (typeof res.flushHeaders === 'function') res.flushHeaders();
-    const client = { res, date: dateStr };
+    const client = { res, date: dateStr, channel };
     sseClients.add(client);
     // Heartbeat: keeps intermediaries from timing the connection out and lets
     // a dead peer be noticed without waiting for a write.
@@ -318,8 +431,61 @@ const server = http.createServer((req, res) => {
     // An initial snapshot, so a page that connects while another browser is
     // active adopts the current log immediately (the client merges it
     // idempotently, exactly like its ordinary GET).
-    const current = readLogFromDisk(dateStr);
-    if (current) sseWrite(res, `event: feed-log\ndata: ${JSON.stringify(current)}\n\n`);
+    const current = channel === 'state-log' ? readStateLogFromDisk(dateStr) : readLogFromDisk(dateStr);
+    if (current) sseWrite(res, `event: ${channel}\ndata: ${JSON.stringify(current)}\n\n`);
+    return;
+  }
+
+  // GET /api/state-log?date=YYYY-MM-DD — the separate official state log.
+  if ((pathname === '/api/state-log' || pathname === '/api/state') && req.method === 'GET') {
+    const dateStr = reqUrl.searchParams.get('date');
+    if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+      sendError(res, 400, 'date query parameter in YYYY-MM-DD format is required');
+      return;
+    }
+    const log = readStateLogFromDisk(dateStr);
+    sendJSON(res, 200, log || emptyStateLog(dateStr));
+    return;
+  }
+
+  // POST /api/state-log — merge official state rows / scoring rows into disk.
+  if ((pathname === '/api/state-log' || pathname === '/api/state') && req.method === 'POST') {
+    let body = '';
+    req.setEncoding('utf8');
+    req.on('data', (chunk) => {
+      body += chunk;
+      if (body.length > 20 * 1024 * 1024) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Payload too large' }));
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      try {
+        const payload = JSON.parse(body);
+        if (!payload || typeof payload !== 'object' || payload.v !== 1 ||
+            !payload.date || !/^\d{4}-\d{2}-\d{2}$/.test(payload.date)) {
+          sendError(res, 400, 'Invalid payload: must be object with v: 1 and valid date (YYYY-MM-DD)');
+          return;
+        }
+        const saved = writeStateLogToDisk(payload.date, payload);
+        if (saved) {
+          const pushed = broadcast('state-log', payload.date, saved);
+          sendJSON(res, 200, {
+            ok: true,
+            date: payload.date,
+            savedAt: saved.savedAt,
+            eventsCount: saved.events.length,
+            scoringCount: saved.scoring.length,
+            pushed,
+          });
+        } else {
+          sendError(res, 500, 'Failed to save state log to disk');
+        }
+      } catch (err) {
+        sendError(res, 400, `JSON parse error: ${err.message}`);
+      }
+    });
     return;
   }
 

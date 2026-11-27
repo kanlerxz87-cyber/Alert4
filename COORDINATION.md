@@ -430,3 +430,57 @@ Most recent date with games: Wed Oct 28, 2026"),
   truth for data values; every flagged/unverified item stays published on the Flagged for Review page
   with its source links (§§1–17). Unverified items are non-blocking and none were silently corrected.
 - Post-merge record itself delivered as a follow-up PR from `arena/9572372b-alert4` (linked in the PR list).
+
+---
+
+## Addendum — session `512b2c81` (arena/512b2c81-alert4, 2026-11-27)
+
+Four workstreams: latency, alert sound, official live-state capture (before/after,
+to the second), and a separate persistent official-scoring section.
+
+**Architecture (two-tier polling).** Tier 1 reads only the feed's own revision
+stamp (`feed/live?fields=metaData,timeStamp,…`, ~300 bytes) on a slate-wide
+budget of 10 req/s — 500 ms for one live game, 1.5 s each for fifteen, with
+in-review games at half the interval. Tier 2 — one purpose-built structured
+projection carrying the complete official state — runs **only when the stamp
+moved** (or after a 15 s safety re-read). It replaces a full `playByPlay`
+document per live game every 250 ms (~60 req/s on a full slate). Written up in
+`docs/latency.md`; budget, terms and per-surface rates in `docs/api-compliance.md`.
+
+**New files.** `assets/js/latency.js` (pacing, `parseTimecode`, `readState`,
+`diffStates`, `buildEvents`, `eventId`, `readPitchCounts`, `readPlayerLines`),
+`assets/js/alert-sound.js` (synthesized 3.0 s raindrop, peak gain 0.16, ≤4 kHz
+partials, 3.2 s cooldown, presets review/live/risk/pending/scoring/preview,
+on-off + Test), `assets/js/state-log.js` (localStorage + `POST /api/state-log`,
+SSE, restored rows never re-chime), `tests/latency-state-test.mjs` (25 checks),
+`docs/latency.md`, `docs/api-compliance.md`.
+
+**Changed.** `assets/js/api.js` — governor (20 req/s, burst 30, 2400/rolling
+minute), `feedMeta`/`feedSnapshot`/`boxscorePitchCounts`, `eventTypesRegistry`.
+`assets/js/reviews-feed.js` — two-tier scan, `scan({force})` with queueing,
+official state capture and the separate scoring pipeline. `server.mjs` — state
+log disk store (`data/state-log-<date>.json`, atomic tmp+rename, idempotent
+merge) and channel-aware SSE (`feed-log`, `state-log`). `reviews.html` — sound
+toggle, Test, notify, latency HUD, live-state / state-log / scoring sections.
+`README.md` — sound contract, capture and scoring sections, polling and TOS
+notes now point at the shipped docs.
+
+**Bugs found and fixed while replaying the real 2026-08-28 slate (15 games):**
+`pollGame()` cleared `pendingCycle` before reading it (so a forced tick never
+forced its confirm read — only 9/15 games captured initial state); a denied
+tier-2 read was parsed as an official observation and logged
+`Score: 12–12 → null–null`. Both are now regressions in the latency suite.
+
+**Verification.** `npm test` **64 passed, 0 failed**; `node tests/run-all.mjs`
+PASS ×5 (syntax, link-check 60 refs, contract-check 8 bindings,
+jsdom-render-test 47 checks, latency-state-test 25 checks);
+`node tools/restoration-check.mjs` ALL CHECKS PASSED. Server round-trip
+verified live on PORT=8144 (POST → GET → SSE 200; feed-log untouched).
+Full-slate replay through the real page: **15/15 games captured**, 0 mislabeled
+rows, 0 null observations.
+
+**Open items (not blocking).** The StatsAPI is unreachable from this sandbox
+(F-512b2c81-1), so live-API spot checks were done through the fetch channel;
+every value used in tests was copied from a real response on 2026-11-27.
+2026-11-27 is the offseason (zero games; F-512b2c81-2), so live behaviour was
+verified against archived game 824638 / the 2026-08-28 slate.

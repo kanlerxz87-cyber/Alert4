@@ -72,6 +72,28 @@
     return registryPromise;
   }
 
+  /* Official event-type wording (GET /api/v1/eventTypes): used to name the
+   * from/to classifications on a scoring change with the API's own labels
+   * ("Fielders Choice", "Field Error") instead of a hand-written gloss. */
+  var eventTypesByCode = null;
+  var eventTypesPromise = null;
+
+  function loadEventTypes() {
+    if (!eventTypesPromise) {
+      eventTypesPromise = MLB.eventTypesRegistry()
+        .then(function (map) { eventTypesByCode = map || null; return eventTypesByCode; })
+        .catch(function () { eventTypesByCode = null; return null; });
+    }
+    return eventTypesPromise;
+  }
+
+  function eventTypeLabel(code) {
+    var clean = String(code || '');
+    if (!clean) return '';
+    var row = eventTypesByCode && eventTypesByCode[clean];
+    return (row && row.description) || '';
+  }
+
   function describe(code) {
     var clean = String(code || '').toUpperCase();
     var row = registryByCode && registryByCode[clean];
@@ -483,6 +505,8 @@
     return {
       atBatIndex: Number(about.atBatIndex),
       eventType: res.eventType || '',
+      /* The API's own label for the event type, when the registry is loaded. */
+      eventTypeLabel: eventTypeLabel(res.eventType) || res.event || '',
       isOut: res.isOut === true,
       outs: typeof count.outs === 'number' ? count.outs : null,
       rbi: typeof res.rbi === 'number' ? res.rbi : null,
@@ -674,6 +698,8 @@
 
   global.Reviews = {
     loadRegistry: loadRegistry,
+    loadEventTypes: loadEventTypes,
+    eventTypeLabel: eventTypeLabel,
     describe: describe,
     statusReview: statusReview,
     playsOf: playsOf,

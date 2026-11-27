@@ -36,14 +36,17 @@
     </div>
     <div id="date-label" class="date-label"></div>
     <div class="feed-controls">
-      <button id="sound-toggle-btn" class="btn btn-ghost" title="Toggle alert sound — a gentle raindrop chime for new challenges/reviews/boundary calls, official-scorer pending rulings and official scoring changes (not ABS), and the same chime whenever an active review could remove a run already on the scoreboard">🔇 Sound Off</button>
+      <button id="sound-toggle-btn" class="btn btn-ghost" aria-pressed="false" title="Toggle the alert sound on/off — a ~3 s synthesized raindrop for new challenges, crew-chief/umpire reviews, boundary calls, ABS pitch challenges, official-scorer pending rulings, official scoring changes and live play-by-play state events. Off = silent monitoring; the feed keeps running either way.">🔇 Sound Off</button>
+      <button id="sound-test-btn" class="btn btn-ghost" title="Play the exact alert tone now, even while Sound is Off, to confirm the alert system and your speakers work">🔔 Test</button>
       <button id="notify-toggle-btn" class="btn btn-ghost" title="Toggle desktop notifications for run-at-risk reviews — a popup the moment an active review could take a run off the scoreboard">⚪ Run Alerts Off</button>
       <button id="refresh-btn" class="btn">Refresh</button>
       <span class="countdown" id="countdown" title="Seconds until the next poll"></span>
+      <span class="latency-hud" id="latency-hud" title="Live latency telemetry: current poll interval, how long the last detected revision took to see, how many official feed revisions were observed, how many state rows were captured, and the remaining request budget (individual, non-commercial, non-bulk use)"></span>
       <div class="live-pill" title="Polling the MLB StatsAPI">
         <span id="live-dot" class="live-dot"></span><span>LIVE</span>
       </div>
     </div>
+    <div class="sound-test-note" id="sound-test-note" role="status" aria-live="polite"></div>
   </header>
 
   <div id="banner" class="banner"></div>
@@ -51,11 +54,23 @@
   <main class="reviews-main">
     <section id="active-strip" class="active-strip-wrap"></section>
 
+    <!-- Official live game state, captured to the second for every game on the
+         slate: score, count, outs, runners, batter, pitcher, pitch count,
+         review state and challenge counters. -->
+    <section id="live-state" class="live-state-wrap"></section>
+
     <section id="feed-stats" class="reviews-summary-bar"></section>
 
-    <nav id="feed-tabs" class="tabs" aria-label="Filter feed"></nav>
+    <nav id="feed-tabs" class="tabs" aria-label="Filter alert feed"></nav>
 
     <section id="feed-list" class="feed-list" aria-live="polite"></section>
+
+    <!-- The play-by-play capture of the official state (separate from alerts). -->
+    <section id="state-log" class="state-log-wrap"></section>
+
+    <!-- Official scoring pending + scoring changes: its own log, persisted
+         separately, never driving the alert feed. -->
+    <section id="scoring-section" class="scoring-wrap"></section>
 
     <div id="status-line" class="status-line"></div>
   </main>
@@ -114,8 +129,11 @@
 
   <script src="assets/js/api.js"></script>
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/latency.js"></script>
+  <script src="assets/js/alert-sound.js"></script>
   <script src="assets/js/reviews.js"></script>
   <script src="assets/js/feed-log.js"></script>
+  <script src="assets/js/state-log.js"></script>
   <script src="assets/js/reviews-feed.js"></script>
 </body>
 </html>

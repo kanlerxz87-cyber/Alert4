@@ -122,17 +122,39 @@ mlb.com uses, re-implemented from scratch in vanilla HTML/CSS/JS.
     **Challenges**, **Reviews**, **Boundary Calls**, **Under Review**,
     **⚠️ Runs at Risk** —,
     summary stats for the whole day, and an optional **sound alert** — a gentle
-    synthesized raindrop chime (three soft drops blooming into a warm two-note
-    chime, ~1.2s, pure sine tones with a light echo) when a new challenge, review,
-    or boundary call lands. It is off by default, remembers your choice per
+    synthesized raindrop (**~3.0 s**: soft water-drop plinks with a light
+    pitch-bend over a warm low body, all sine tones below 4 kHz, master peak
+    0.16 ≈ −16 dBFS) that plays **once per alert family** whenever a row lands
+    in the alert feed. It is **off by default**, remembers your choice per
     browser, and never fires for routine ABS pitch challenges (the run-at-risk
-    case below is the one exception, and it uses this exact same chime).
+    case below is the one exception, and it uses this exact same tone).
+    A **🔇 Sound Off / 🔊 Sound On** toggle and a separate **Test** button sit
+    in the Replay Feed toolbar: Test plays the real alert even while alerts are
+    Off, so you can confirm the audio path works before you rely on it, and the
+    status line under the buttons says exactly what happened (e.g. "Test alert
+    played" or "no audio device in this browser"). Browsers block audio until
+    you interact with the page; the toggle/test click is that gesture, so the
+    first tone after a page load is the one you asked for rather than a silent
+    miss. Tones are spaced by a 3.2 s cooldown, so a burst of events collapses
+    into one sound instead of a klaxon.
+
+    **The sound contract.** With Sound On, every row that the alert feed tracks
+    as an alert produces a tone, and nothing else does (routine ABS pitch
+    challenges are tracked but silent, as above):
+    challenge / manager challenge / umpire review / boundary call → `review`;
+    a review with runs at risk → `risk` (once per review, plus the optional
+    desktop notification); an official-scoring **pending ruling** → `pending`;
+    an official-scoring **change** to a prior at-bat → `scoring`. The four are
+    presets of the same raindrop graph (slightly different drop patterns and
+    pitch), not four different sounds. The state-log and scoring sections never
+    chime on their own — they are a separate pipeline (see below) — and
+    restoring a persisted log after a refresh never chimes.
   - **⚠️ Runs at Risk — "could this review take a run OFF the board?"** The feed
     tracks, per review, whether the call on the field credited runs to the very
     event now under review, so an overturn could remove them from the score. When
-    it can, you get, immediately: the **same gentle raindrop chime** used for any
-    new review (one alert sound for the whole page — it is literally the same
-    audio graph, and shares its 2.5s cooldown), an
+    it can, you get, immediately: the **same gentle raindrop** used for any
+    new review (one alert sound for the whole page — literally the same audio
+    graph, sharing its 3.2 s cooldown), an
     optional **desktop notification**, a persistent **red banner** at the top of
     the page listing every affected game with the call-stands score and — only
     when the payload actually supports it — the score if the runs come off,
@@ -330,14 +352,19 @@ for archived games the request is scoped to the feed's game season.
 │   └── js/
 │       ├── api.js             # MLB StatsAPI client (fetch, retry, fallbacks, formatters)
 │       ├── ui.js              # Shared UI: team logos, colors, count dots, runners diamond
+│       ├── latency.js         # Pacing + official state capture/diff (tier-1 stamp, tier-2 snapshot)
+│       ├── alert-sound.js     # Synthesized ~3 s raindrop, presets, on/off, Test, cooldown
 │       ├── reviews.js         # Challenge & replay review parser (Manager, Crew Chief, ABS)
-│       ├── reviews-feed.js    # All-games Replay Feed logic (diff helpers + page)
+│       ├── reviews-feed.js    # All-games Replay Feed logic (two-tier scan, capture, alerts, page)
 │       ├── scoreboard.js      # Scoreboard page logic
 │       ├── feed-log.js        # Per-date feed log: localStorage + optional server.mjs sync/SSE
+│       ├── state-log.js       # Official state + scoring log: localStorage + server sync/SSE
 │       ├── props.js           # Two-sided hit model, stat cache, Props & Matchup tab
 │       └── game.js            # Game page logic (live "at bat" module, linescore, box, PBP)
-├── server.mjs                 # Optional zero-dependency persistence server (static + feed log)
-├── tests/                     # Zero-network checks: link check, jsdom render test, fixtures
+├── server.mjs                 # Optional zero-dependency server (static + feed log + state log)
+├── tests/                     # Zero-network checks: links, contracts, jsdom render, latency/state
+├── docs/latency.md            # Why two-tier polling is the fastest legitimate shape (+ measurements)
+├── docs/api-compliance.md     # Terms, the request budget, and per-surface rates
 ├── docs/verification-report.md# Field-by-field verification with official source links
 └── COORDINATION.md            # Multi-session task board, claims, merge + deployment record
 ```
@@ -364,9 +391,11 @@ To run the checks that ship with this repository (no network needed):
 ```bash
 node tests/link-check.mjs                # every local href/src/url() in the site resolves
 node tests/jsdom-render-test.mjs         # end-to-end render of the real pages (needs jsdom)
-npm install --no-save jsdom              # ...one-time dev dependency for the test above only
+npm install --no-save jsdom              # ...one-time dev dependency for the two jsdom tests
 node tests/jsdom-render-test.mjs --live  # same test, answering the pages from the live StatsAPI
-node server.mjs                          # optional persistence backend for the feed log
+node tests/latency-state-test.mjs        # two-tier polling, official capture, persistence, sound, pacing
+node tests/run-all.mjs                   # syntax + links + contracts + render + latency, one summary
+node server.mjs                          # optional persistence backend for both logs
 ```
 
 The original repository also listed 15 `tools/*.mjs` scripts and `docs/*` notes; those files were
@@ -391,6 +420,55 @@ changes) is persistent across the website:
     with full initial-call-to-final-ruling breakdown, and updates the tab badge.
   - `index.html`: scoreboard cards display the `✏️ N Scoring Change(s)` indicator.
   (the original `docs/scoring-changes.md` was not uploaded — see F-003 on [`flagged.html`](flagged.html)).
+
+### Official live game state — captured to the second
+
+Separate from the alert feed, the Replay Feed keeps an **official live game state
+log** for every monitored game (all games on the date, not a subset), in its own
+section on `reviews.html`:
+
+- **What is captured, per observation:** the official revision timecode
+  (`YYYYMMDD_HHMMSS` UTC) *and* the local observation time; status; inning and
+  half; score; the full linescore line; balls, strikes, outs; bases occupied;
+  current batter and pitcher; the at-bat (index, complete flag, official event
+  type, and the official description **verbatim**); manager + ABS challenge
+  counters; team and per-pitcher pitch counts; per-pitcher and per-batter box
+  score lines (IP/H/R/ER/BB/K/HR/pitches/strikes); and any review details
+  (`reviewType`, `isOverturned`, `inProgress`, `challengeTeamId`).
+- **Before → after wording.** Every row carries the exact official text of both
+  sides of the change: `"Score: 9–4" → "Score: 10–8"`, or
+  `"Nico Hoerner flies out to left fielder TJ Friedl."` as the at-bat's published
+  description, or a challenge counter line such as
+  `"CIN 1 MGR · 2 ABS — CHC 1 MGR · 2 ABS"`. Nothing is paraphrased and nothing
+  is predicted.
+- **Persisted through refreshes.** Rows and snapshots are written to
+  `localStorage` *and* to the project's disk store (`data/state-log-<date>.json`
+  via `POST /api/state-log`); on load, the stored copy is painted **before** the
+  first network read, so a refresh never shows an empty log. Restored rows are
+  marked as restored and **never re-fire an alert**.
+- **Live across tabs** over the server-sent `state-log` channel
+  (`GET /api/state-log/stream?date=<date>`), with the periodic pull as fallback
+  and the server skipped entirely on static hosting.
+
+### Official scoring pending & scoring changes — the separate section
+
+Pending official scoring for at-bats not yet scored, and any later change to a
+play's outcome by the official scorer, are kept in their **own section**
+(`#scoring-section`) with their own rows and their own storage:
+
+- `scoring_pending` — the API's own `os_ruling_pending_primary` event type, with
+  the official description `"Official Scorer Ruling Pending"` as the "before".
+- `scoring_change` — a prior at-bat whose classification moved (e.g. a `walk`
+  re-scored to a `field_error`), with `beforeEventType`, `afterEventType`, and
+  the official descriptions of both.
+
+This section is deliberately **independent of the alert system**: its rows live
+in their own slice of the log (`scoring`), it renders in its own panel, and a
+change there cannot disturb the alert feed. It *does* have its own chime preset
+(`pending` / `scoring`) when Sound is On — that is a consequence of the alert
+contract ("every row in the alert feed produces a tone"), not a coupling of the
+two storage pipelines; the latency suite asserts that rendering or restoring the
+scoring section never moves the alert state.
 
 To *see and hear* the ⚠️ Runs at Risk surfaces without waiting for a live review,
 run the offline, fixture-driven render test — it stubs the API with the exact same
@@ -450,33 +528,44 @@ GitHub Actions**.
   degrades gracefully if a field disappears.
 - **Terms & budget:** the binding rules for this data, the request rate of every
   polling surface, and the code paths that enforce them are written down in
-  `docs/api-compliance.md` *(not part of the upload — see F-003 on [`flagged.html`](flagged.html))* — including the two clauses
+  [`docs/api-compliance.md`](docs/api-compliance.md) — including the two clauses
   that pull in different directions (the API's own notice permits "individual,
   non-commercial, non-bulk use"; MLB.com's Terms of Use §1 forbids automated
   collection and any display beyond personal, non-commercial home use) and the
   open question of public deployment. There is no published rate limit for the
-  StatsAPI and no written authorization either way.
+  StatsAPI and no written authorization either way. The polling design and the
+  measured latency are documented in [`docs/latency.md`](docs/latency.md).
 - Be a good citizen: the app needs **no API key** (the StatsAPI is keyless and
   open-CORS) and it self-limits — every page pauses when the tab is hidden,
   backs off on preview/final games, bounds post-Final re-scans to a 30-minute
   grace window, and the shared client honours **HTTP 429** with a quiet period
   (the server's own `Retry-After` when it sends one, clamped to 1s–5min;
   otherwise 60 seconds), so it can never hammer a host that has asked it to
-  slow down. The live push is server-side (same-origin `EventSource`) and adds
-  no requests to MLB's API. The Replay Feed scans live games'
-  playByPlay (the light, `fields`-projected endpoint — no boxscore/rosters)
-  every 250ms, subtracts scan time from the next wait, fetches in-review games
-  first, and only re-renders when a review event actually changes. Worst case
-  on a full ~15-game slate that is ~60 playByPlay requests/s plus ~4 tiny
-  status sweeps/s (~68 req/s, single client, since the sweep went 250ms → 125ms)
-  — far below "thousands of requests per second", and the same cadence the page
-  already used whenever any review was in flight. The 1s post-Final tier adds
-  ~70 requests per finished game
-  across its 30-minute grace (~292 total, up from ~220) — bounded, and only for
-  games that have just gone final. The StatsAPI is
+  slow down. Every surface shares **one** governor (`assets/js/api.js`):
+  20 requests/s refilled with a 30-request burst, and a hard 2400-per-rolling-
+  minute cap; a request that finds it empty is denied, not queued into a burst.
+  The live push is server-side (same-origin `EventSource`) and adds no requests
+  to MLB's API.
+
+  **The Replay Feed polls two tiers** (full detail:
+  [`docs/latency.md`](docs/latency.md)). Tier 1 is the feed's own revision
+  stamp — `feed/live?fields=metaData,timeStamp,…`, **~300 bytes** per live game
+  — budgeted slate-wide at **10 reads/s** (500 ms for one game, 1.5 s each for
+  15), with games **under review at half that interval**. Tier 2 — one
+  purpose-built structured projection that carries the complete official state
+  (status, linescore, count, outs, runners, current play, review details,
+  challenge counters), then the review/scoring parse — runs **only when the
+  stamp moved** (or after a 15 s safety re-read), so an unchanged game does no
+  parsing at all. A refresh or tab focus forces one cycle; a scan requested
+  while another is in flight is queued, never dropped.
+
+  That replaces a full `playByPlay` document per live game every 250 ms
+  (~60 req/s and multi-MB/min on a 15-game slate). Same-or-better latency,
+  strictly fewer requests and bytes: the stamp moves the moment MLB publishes,
+  and the change is in the alert path on the same tick. The StatsAPI is
   pull-only — a shorter poll only reduces how long a landed event sits unseen.
 - This is a **personal, non-commercial project** (no ads, no analytics, no data resale — see the
-  request budget and the governing terms in `docs/api-compliance.md` *(not part of the upload — see F-003 on [`flagged.html`](flagged.html))*).
+  request budget and the governing terms in [`docs/api-compliance.md`](docs/api-compliance.md)).
   It lives in a public repository and is served from GitHub Pages; that is hosting, not a service
   offered to others.
 - Review/challenge data shapes were verified against the live API on 2026-08-19

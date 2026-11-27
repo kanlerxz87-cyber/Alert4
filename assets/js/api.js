@@ -2,13 +2,30 @@
  * api.js — MLB StatsAPI client
  *
  * One place for every network call the site makes:
- *   1. fetch wrapper with timeout, retry, response cache and HTTP-429 handling
- *   2. endpoint helpers (schedule, feed/live, playByPlay, gameStatus, people stats)
+ *   1. fetch wrapper with timeout, retry, response cache, HTTP-429 handling and
+ *      a request-rate governor (individual, non-commercial, non-bulk use)
+ *   2. endpoint helpers (schedule, feed/live, feed metadata, playByPlay,
+ *      gameStatus, eventTypes, people stats)
  *   3. small date/number formatters shared by the pages
  *
  * The StatsAPI is keyless and sends CORS headers, so a static GitHub Pages site
  * can call it straight from the browser.  Endpoint list + `fields` projections
- * follow the ones documented in README.md §"How it works".
+ * follow the ones documented in README.md §"How it works" and
+ * docs/api-compliance.md (the request budget).
+ *
+ * Latency design (see docs/latency.md):
+ *   - `feedMeta()` asks for the game feed's own revision stamp (`metaData`) plus
+ *     its status.  It is a few hundred bytes and is the *earliest* signal that
+ *     MLB has published anything for a game: `timeStamp` is the official feed
+ *     revision (YYYYMMDD_HHMMSS), so a changed stamp means "new official data
+ *     exists right now".  Polling this instead of the whole feed is what makes
+ *     sub-second detection affordable inside the terms of use.
+ *   - `feedSnapshot()` then asks for one small structured projection (status,
+ *     linescore, current play, review details, challenge counters) pinned to a
+ *     timecode — the exact official state, stamped to the second.
+ *   - `playByPlay()` is the ground-truth parser input and now runs on demand
+ *     (new completed at-bat / review / safety cadence) instead of four times a
+ *     second per game.
  * ==========================================================================*/
 (function (global) {
   'use strict';
@@ -24,12 +41,44 @@
   var QUIET_MIN_MS = 1000;
   var QUIET_MAX_MS = 300000;
 
+  /* ---------------------------------------------------------- request budget
+   * The MLBAM notice that ships with the API (gdx.mlb.com/components/
+   * copyright.txt) permits "only individual, non-commercial, non-bulk use".
+   * The budget below is the enforceable reading of "non-bulk" for this app:
+   * one browser page may not exceed ~20 requests/second sustained and 2400 per
+   * rolling minute, whichever is smaller.  Callers that cannot get a token are
+   * told to back off (err.budget) — they never queue up into a burst.
+   *
+   * Why a global governor rather than per-page numbers: the Replay Feed now
+   * polls every live game, so the number of requests scales with the slate.
+   * The governor keeps the *total* flat no matter how many games are live, and
+   * the latency engine lowers its per-game interval when the slate is large
+   * (see assets/js/latency.js → adaptiveMetaMs).
+   */
+  var BUDGET = {
+    refillPerSec: 20,
+    burst: 30,
+    windowMs: 60000,
+    maxPerWindow: 2400,
+  };
+
   var state = {
     quietUntil: 0,
     lastError: null,
     lastOK: 0,
     requests: 0,
     cacheHits: 0,
+    budget: {
+      tokens: BUDGET.burst,
+      refilledAt: Date.now(),
+      denied: 0,
+      windowStart: Date.now(),
+      windowCount: 0,
+      peakPerSec: 0,
+      perSec: 0,
+      perSecAt: Date.now(),
+      perSecCount: 0,
+    },
   };
 
   var cache = Object.create(null);
@@ -42,6 +91,57 @@
   }
 
   function quietRemainingMs() { return Math.max(0, state.quietUntil - now()); }
+
+  /**
+   * takeBudgetToken() -> true when the request may go out now.
+   *
+   * Two limits, both enforced in this one place:
+   *   - token bucket: BUDGET.refillPerSec with a BUDGET.burst ceiling;
+   *   - rolling-minute cap: BUDGET.maxPerWindow.
+   * Absence of a token is not "wait forever": the caller gets false and backs
+   * its own polling interval off, so a big slate simply scans a little slower
+   * instead of firing a burst.  Every response resets nothing — the bucket is
+   * monotonic, which is what keeps this inside "non-bulk".
+   */
+  function takeBudgetToken() {
+    var b = state.budget;
+    var t = now();
+    var elapsed = Math.max(0, t - b.refilledAt) / 1000;
+    if (elapsed > 0) {
+      b.tokens = Math.min(BUDGET.burst, b.tokens + elapsed * BUDGET.refillPerSec);
+      b.refilledAt = t;
+    }
+    if (t - b.perSecAt >= 1000) {
+      b.peakPerSec = Math.max(b.peakPerSec, b.perSecCount);
+      b.perSec = b.perSecCount;
+      b.perSecCount = 0;
+      b.perSecAt = t;
+    }
+    if (t - b.windowStart >= BUDGET.windowMs) {
+      b.windowStart = t;
+      b.windowCount = 0;
+    }
+    if (b.tokens < 1 || b.windowCount >= BUDGET.maxPerWindow) {
+      b.denied += 1;
+      return false;
+    }
+    b.tokens -= 1;
+    b.windowCount += 1;
+    b.perSecCount += 1;
+    return true;
+  }
+
+  /** Requests still available in the current rolling minute (for the HUD). */
+  function budgetRemaining() {
+    var b = state.budget;
+    var t = now();
+    var windowLeft = b.windowCount >= BUDGET.maxPerWindow
+      ? 0
+      : BUDGET.maxPerWindow - b.windowCount;
+    var elapsed = Math.max(0, t - b.refilledAt) / 1000;
+    var tokens = Math.min(BUDGET.burst, b.tokens + elapsed * BUDGET.refillPerSec);
+    return { tokens: Math.floor(tokens), windowLeft: windowLeft, denied: b.denied };
+  }
 
   function parseRetryAfter(value) {
     if (!value) return 0;
@@ -73,11 +173,13 @@
    *   opts.retries  extra attempts after a failed one (default 1)
    *   opts.signal   external AbortSignal (poll loops use it to cancel)
    *   opts.keepQuiet  bypass the 429 quiet window (used by the quiet probe only)
+   *   opts.noBudget bypass the request-rate governor (never used by poll loops)
    */
   function getJSON(url, opts) {
     opts = opts || {};
     var ttl = opts.ttl || 0;
     var retries = typeof opts.retries === 'number' ? opts.retries : 1;
+    var noBudget = opts.noBudget === true;
 
     if (ttl && cache[url] && now() - cache[url].at < cache[url].ttl) {
       state.cacheHits += 1;
@@ -89,6 +191,14 @@
       var qerr = ApiError('StatsAPI quiet period, ' + Math.ceil(quiet / 1000) + 's remaining', 429, url);
       qerr.quiet = true;
       return Promise.reject(qerr);
+    }
+
+    if (!noBudget && !takeBudgetToken()) {
+      /* Over budget: fail fast with a typed error so poll loops can slow down
+       * instead of retrying (a retry would be exactly the burst we are avoiding). */
+      var berr = ApiError('Request budget reached (individual, non-commercial, non-bulk use)', 0, url);
+      berr.budget = true;
+      return Promise.reject(berr);
     }
 
     var attempt = 0;
@@ -257,6 +367,82 @@
     });
   }
 
+  /* ------------------------------------------------------- fastest tier ---- *
+   * The two helpers below are the ones the Replay Feed's latency engine polls.
+   * Both were verified against the live StatsAPI on 2026-11-27 (see
+   * docs/latency.md §Verification, `docs/verification-report-alert4.md`):
+   *
+   *   GET /api/v1.1/game/{pk}/feed/live?fields=metaData,timeStamp,wait,gameEvents,logicalEvents
+   *     -> {"metaData":{"wait":10,"timeStamp":"20260828_212415","gameEvents":[...]}}
+   *   GET /api/v1.1/game/{pk}/feed/live?fields=gameData,status,...,review,absChallenges
+   *     -> {"gameData":{"status":{...},"review":{...},"absChallenges":{...}}}
+   *
+   * `timeStamp` is MLB's own feed revision id: it changes the moment any part of
+   * the official feed is re-published, and every at-bat / pitch / review lands
+   * as one revision.  A single few-hundred-byte request per game per tick is
+   * therefore enough to know "something landed" — the heavy parse only runs
+   * when it did.  `wait` is the server's own suggested poll wait (ms).
+   */
+
+  var META_FIELDS = 'metaData,timeStamp,wait,gameEvents,logicalEvents';
+
+  function feedMetaUrl(gamePk, opts) {
+    var url = API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(META_FIELDS);
+    if (opts && opts.timecode) url += '&timecode=' + encodeURIComponent(opts.timecode);
+    return url;
+  }
+
+  function feedMeta(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(feedMetaUrl(gamePk), { signal: opts.signal, retries: 0 });
+  }
+
+  /* Structured official state in one small response.  Unprojected today's
+   * fields were validated live; when a field group is missing for an older
+   * game the caller falls back to the playByPlay path (never guesses). */
+  var SNAPSHOT_FIELDS = [
+    'metaData,timeStamp',
+    'gameData,status,abstractGameState,codedGameState,detailedState,statusCode,reason,abstractGameCode,startTimeTBD',
+    'review,absChallenges,hasChallenges,away,home,used,remaining,usedSuccessful,usedFailed',
+    'liveData,linescore,currentInning,currentInningOrdinal,inningState,isTopInning,scheduledInnings',
+    'innings,num,ordinalNum,runs,hits,errors,leftOnBase,isFinal',
+    'teams,away,home,name,abbreviation,teamName',
+    'offense,defense,batter,pitcher,onDeck,inHole,first,second,third,id,fullName',
+    'balls,strikes,outs',
+    'plays,currentPlay,about,atBatIndex,isComplete,hasReview,isScoringPlay,isTopInning,inning,halfInning',
+    'result,eventType,event,description,rbi,awayScore,homeScore,isOut,isScoringEvent',
+    'reviewDetails,reviewType,isOverturned,inProgress,challengeTeamId,player',
+    'count,matchup,playEvents,isPitch,index,pitchNumber,details,call,type,description',
+  ].join(',');
+
+  function feedSnapshot(gamePk, opts) {
+    opts = opts || {};
+    var url = API_ROOT + '/v1.1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(SNAPSHOT_FIELDS);
+    if (opts.timecode) url += '&timecode=' + encodeURIComponent(opts.timecode);
+    return getJSON(url, { signal: opts.signal, retries: 0 })
+      .catch(function (err) {
+        if (err && err.status === 404) {
+          /* v1.1 is the only documented feed/live version that honours
+           * `timecode`; retry the v1 path without the pin before giving up. */
+          var v1 = API_ROOT + '/v1/game/' + gamePk + '/feed/live?fields=' + encodeURIComponent(SNAPSHOT_FIELDS);
+          return getJSON(v1, { signal: opts.signal, retries: 0 });
+        }
+        throw err;
+      });
+  }
+
+  /* Box-score pitch counts are the only place the official per-pitcher and
+   * per-team pitch totals live; the lean feed does not carry them.  Re-read on
+   * a slow cadence (see latency.js) so the live state log can record them. */
+  var PITCH_COUNT_FIELDS = 'teams,away,home,teamStats,pitching,numberOfPitches,players,stats,person,id,fullName';
+
+  function boxscorePitchCounts(gamePk, opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1/game/' + gamePk + '/boxscore?fields=' + encodeURIComponent(PITCH_COUNT_FIELDS), {
+      signal: opts.signal, retries: 0,
+    });
+  }
+
   function playByPlay(gamePk, opts) {
     opts = opts || {};
     var url = API_ROOT + '/v1/game/' + gamePk + '/playByPlay';
@@ -283,6 +469,22 @@
         var byCode = Object.create(null);
         (Array.isArray(rows) ? rows : []).forEach(function (row) {
           if (row && row.statusCode) byCode[row.statusCode] = row;
+        });
+        return byCode;
+      });
+  }
+
+  /* Official event-type registry (GET /api/v1/eventTypes) — each row is
+   * {code, description, hit, plateAppearance, baseRunningEvent}.  Used to
+   * resolve official wording for scoring-change from/to values
+   * ("Fielders Choice" ↔ "Field Error") instead of inventing labels. */
+  function eventTypesRegistry(opts) {
+    opts = opts || {};
+    return getJSON(API_ROOT + '/v1/eventTypes', { ttl: 3600000, retries: 0, signal: opts.signal })
+      .then(function (rows) {
+        var byCode = Object.create(null);
+        (Array.isArray(rows) ? rows : []).forEach(function (row) {
+          if (row && row.code) byCode[row.code] = row;
         });
         return byCode;
       });
@@ -393,21 +595,31 @@
   global.MLB = {
     SPORT_ID: SPORT_ID,
     API_ROOT: API_ROOT,
+    BUDGET: BUDGET,
     STATUS_FIELDS: STATUS_FIELDS,
     SCHEDULE_HYDRATE: SCHEDULE_HYDRATE,
+    META_FIELDS: META_FIELDS,
+    SNAPSHOT_FIELDS: SNAPSHOT_FIELDS,
     getJSON: getJSON,
     schedule: schedule,
     scheduleRange: scheduleRange,
     slateStatus: slateStatus,
     gameFeed: gameFeed,
     gameStatusLean: gameStatusLean,
+    feedMeta: feedMeta,
+    feedMetaUrl: feedMetaUrl,
+    feedSnapshot: feedSnapshot,
+    boxscorePitchCounts: boxscorePitchCounts,
     playByPlay: playByPlay,
     boxscore: boxscore,
     linescore: linescore,
     gameStatusRegistry: gameStatusRegistry,
+    eventTypesRegistry: eventTypesRegistry,
     peopleStats: peopleStats,
     vsPlayer: vsPlayer,
     quietRemainingMs: quietRemainingMs,
+    budgetRemaining: budgetRemaining,
+    takeBudgetToken: takeBudgetToken,
     state: state,
     toISODate: toISODate,
     todayISO: todayISO,
